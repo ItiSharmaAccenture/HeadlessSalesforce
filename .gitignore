@@ -39,3 +39,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# The template is meant to be committed; real env files are not.
+!.env.example
+
+# Server-side OAuth token store and pending-authorization state.
+# These contain live Salesforce credentials and must never be committed.
+/.local/
+*.tokens.json
+salesforce-tokens.json
+salesforce-oauth-pending.json

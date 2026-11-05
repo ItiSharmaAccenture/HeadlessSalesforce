@@ -1,26 +1,181 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  /* Salesforce-inspired blues, used sparingly as accents. */
+  --color-brand-50: #eef6ff;
+  --color-brand-100: #d8eaff;
+  --color-brand-200: #b6d8ff;
+  --color-brand-500: #0176d3;
+  --color-brand-600: #0b5cab;
+  --color-brand-700: #0a4a89;
+
+  --color-surface: #ffffff;
+  --color-canvas: #f5f7fa;
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  background: var(--color-canvas);
+  color: #181818;
 }
 
+/* The chat is a fixed-height column with its own scroller, so the page itself
+   must not scroll. */
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Thin, unobtrusive scrollbar for the transcript. */
+.scroll-subtle {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.scroll-subtle::-webkit-scrollbar {
+  width: 8px;
+}
+.scroll-subtle::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 9999px;
+}
+.scroll-subtle::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ------------------------------------------------------------------ */
+/* Markdown rendering                                                  */
+/* ------------------------------------------------------------------ */
+
+/* Scoped to assistant bubbles. Hand-rolled rather than pulling in the
+   typography plugin, which is more than this POC needs. */
+.markdown {
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.markdown > * + * {
+  margin-top: 0.75rem;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3 {
+  font-weight: 600;
+  line-height: 1.3;
+}
+.markdown h1 { font-size: 1.125rem; }
+.markdown h2 { font-size: 1.0625rem; }
+.markdown h3 { font-size: 1rem; }
+
+.markdown strong {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.markdown a {
+  color: var(--color-brand-600);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown ul,
+.markdown ol {
+  padding-left: 1.25rem;
+}
+.markdown ul { list-style: disc; }
+.markdown ol { list-style: decimal; }
+.markdown li + li { margin-top: 0.25rem; }
+
+.markdown code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.85em;
+  background: #f1f5f9;
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.3rem;
+}
+
+.markdown pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+}
+.markdown pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font-size: 0.8125rem;
+}
+
+.markdown blockquote {
+  border-left: 3px solid var(--color-brand-200);
+  padding-left: 0.75rem;
+  color: #475569;
+}
+
+/* Tables carry most of the Salesforce output, so they get real styling. */
+.markdown .table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+}
+
+.markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.markdown thead {
+  background: var(--color-brand-50);
+}
+
+.markdown th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-brand-700);
+  white-space: nowrap;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.markdown td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: top;
+}
+
+.markdown tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.markdown tbody tr:hover {
+  background: #f8fafc;
+}
+
+/* ------------------------------------------------------------------ */
+/* Motion                                                              */
+/* ------------------------------------------------------------------ */
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-rise {
+  animation: rise 0.22s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise,
+  .animate-spin,
+  .animate-pulse {
+    animation: none !important;
+  }
 }
