@@ -12,7 +12,7 @@ import { GoogleGenAI, type Content, type FunctionDeclaration, type Part } from '
 
 import { config } from './config';
 import { log } from './logger';
-import { openMcpSession, McpError, type McpSession } from './salesforce-mcp';
+import { openMcpSession, McpError, type McpSession, type ParsedToolResult } from './salesforce-mcp';
 import { SalesforceAuthError } from './salesforce-auth';
 import { validateToolArguments, type ApprovedTool, type JsonSchema } from './tool-allowlist';
 import type { ChatRequestBody, ServerEvent, StageId } from '@/types/chat';
@@ -167,12 +167,27 @@ const STAGE_LABELS: Record<StageId, string> = {
 };
 
 /**
+ * Lets a caller specialise one turn without forking the loop. Every hook is
+ * optional; with none set the turn behaves exactly as the general assistant.
+ */
+export interface AssistantOptions {
+  /** Replaces the default system instruction. Receives the tools Gemini will see. */
+  systemInstruction?: (tools: ApprovedTool[]) => string;
+  /** Narrows the discovered tools exposed to Gemini for this turn. */
+  selectTools?: (tools: ApprovedTool[]) => ApprovedTool[];
+  /** Rewrites validated arguments just before the call, e.g. to pin an identity. */
+  prepareArguments?: (tool: ApprovedTool, args: Record<string, unknown>) => Record<string, unknown>;
+  /** Observes each successful result. A returned string replaces the text Gemini receives. */
+  onToolResult?: (tool: ApprovedTool, result: ParsedToolResult) => string | void;
+}
+
+/**
  * Runs one chat turn, yielding progress events in real time.
  *
  * Every event corresponds to work that actually ran; nothing here is simulated
  * and no delay is artificial.
  */
-export async function* runAssistant(body: ChatRequestBody): AsyncGenerator<ServerEvent> {
+export async function* runAssistant(body: ChatRequestBody, options: AssistantOptions = {}): AsyncGenerator<ServerEvent> {
   if (!config.gemini.apiKey) {
     throw new GeminiConfigError(
       'GEMINI_API_KEY is not set. Add a Google AI Studio key to .env.local and restart the server.',
@@ -253,6 +268,9 @@ export async function* runAssistant(body: ChatRequestBody): AsyncGenerator<Serve
     log.warn('gemini', 'Continuing without Salesforce tools', { message: discoveryError });
   }
 
+  // The cache holds everything discovered; a caller's selection applies per turn.
+  if (options.selectTools) tools = options.selectTools(tools);
+
   /* ---- Conversation seed ---------------------------------------- */
 
   const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
@@ -265,7 +283,7 @@ export async function* runAssistant(body: ChatRequestBody): AsyncGenerator<Serve
   contents.push({ role: 'user', parts: [{ text: body.message }] });
 
   const instruction =
-    systemInstruction(tools) +
+    (options.systemInstruction ?? systemInstruction)(tools) +
     (discoveryError ? `\n\nSalesforce is currently unreachable. Reason to relay to the user: ${discoveryError}` : '');
 
   const generationConfig = {
@@ -390,9 +408,11 @@ export async function* runAssistant(body: ChatRequestBody): AsyncGenerator<Serve
 
         yield { type: 'tool_started', key, tool: name, message: `Calling Salesforce MCP: ${name}` };
 
+        const args = options.prepareArguments ? options.prepareArguments(tool, validation.args) : validation.args;
+
         const startedAt = Date.now();
         try {
-          const result = await session.callTool(name, validation.args);
+          const result = await session.callTool(name, args);
           const durationMs = Date.now() - startedAt;
 
           if (result.isError) {
@@ -422,13 +442,15 @@ export async function* runAssistant(body: ChatRequestBody): AsyncGenerator<Serve
             result.truncated ? 'Parsed MCP response (truncated to fit)' : 'Parsed MCP response',
           );
 
+          const forModel = options.onToolResult?.(tool, result) ?? result.text;
+
           responseParts.push({
             functionResponse: {
               ...(call.id ? { id: call.id } : {}),
               name,
               // Record content is data, not instruction. The system prompt tells
               // the model to treat it that way; the wrapper makes it explicit.
-              response: { salesforce_data: result.text },
+              response: { salesforce_data: forModel },
             },
           });
         } catch (error) {

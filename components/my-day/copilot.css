@@ -1,0 +1,1016 @@
+/* ==========================================================================
+   ADT Copilot panel for /my-day.
+   Rendered in a portal on <body>, outside .myday, so the My Day tokens are
+   repeated here. Everything is scoped under .copilot.
+   ========================================================================== */
+
+.copilot {
+  --ink: #05063d;
+  --ink-soft: #2b558f;
+  --icon-navy: #08397a;
+  --navy: #013169;
+  --blue: #0e3bfc;
+  --blue-icon: #0062fe;
+  --blue-hover: #f0f4ff;
+  --green: #12a80b;
+  --amber: #ff9d00;
+  --surface: #f8f9fd;
+  --page: #f9fafd;
+  --line: #d5e3f4;
+  --line-strong: #bccfe7;
+  --tile-blue: #e3effe;
+  --tile-green: #e7f8ea;
+  --tile-amber: #fdf5e5;
+  --duty-green: #dcf6e2;
+  --alert: #fe0205;
+  --danger: #c4121a;
+  --tile-red: #fdeced;
+
+  /* Same radius scale and card shadow as the My Day cards. */
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 20px;
+  --r-xl: 24px;
+  --card-shadow: 0 10px 28px rgba(8, 36, 92, 0.14), 0 2px 6px rgba(8, 36, 92, 0.06);
+
+  color-scheme: light;
+  color: var(--ink);
+  font-family: var(--font-jakarta, "Plus Jakarta Sans"), "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14.5px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+.copilot *,
+.copilot *::before,
+.copilot *::after {
+  box-sizing: border-box;
+}
+
+.copilot img {
+  display: block;
+  max-width: none;
+}
+
+.copilot button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.copilot button:disabled {
+  cursor: not-allowed;
+}
+
+.copilot p,
+.copilot h2,
+.copilot h3,
+.copilot dl,
+.copilot dd,
+.copilot ul,
+.copilot ol {
+  margin: 0;
+}
+
+.copilot :focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.cp-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ------------------------------------------------------------------ Panel */
+
+.cp-panel {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 60;
+  width: 400px;
+  height: 600px;
+  max-height: calc(100dvh - 48px);
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  box-shadow: var(--card-shadow), 0 24px 56px rgba(8, 36, 92, 0.12);
+  overflow: hidden;
+  transform-origin: bottom right;
+  transition:
+    opacity 0.18s ease,
+    transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 0s linear 0s;
+}
+
+.cp-panel[data-state="closed"],
+.cp-panel[data-state="minimised"] {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(12px) scale(0.96);
+  pointer-events: none;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease,
+    visibility 0s linear 0.15s;
+}
+
+/* ----------------------------------------------------------------- Header */
+
+.cp-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 68px;
+  padding: 0 10px 0 16px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--navy) 0%, #013068 55%, #133e70 100%);
+}
+
+/* The blue logo needs a light ground on the navy header, like the stat tiles. */
+.cp-logo-tile {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 18, 60, 0.25);
+}
+
+.cp-logo-tile--small {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.cp-logo {
+  width: 34px;
+  height: 33px;
+}
+
+.cp-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.cp-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.cp-online {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.cp-online-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 2px rgba(18, 168, 11, 0.28);
+  flex: none;
+}
+
+.cp-online--connecting .cp-online-dot {
+  background: var(--amber);
+  box-shadow: 0 0 0 2px rgba(255, 157, 0, 0.28);
+}
+
+.cp-online--offline .cp-online-dot {
+  background: #9aa9bf;
+  box-shadow: none;
+}
+
+.cp-header-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.cp-icon-btn {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  transition: background-color 0.15s ease;
+}
+
+.copilot .cp-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.cp-icon-btn svg {
+  width: 22px;
+  height: 22px;
+}
+
+.copilot .cp-header :focus-visible,
+.copilot .cp-mini :focus-visible {
+  outline-color: #fff;
+}
+
+.cp-icon-btn--ink {
+  color: var(--ink);
+}
+
+.copilot .cp-icon-btn--ink:hover {
+  background: var(--tile-blue);
+}
+
+/* ------------------------------------------------------------- Messages */
+
+.cp-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 16px 18px;
+  background:
+    radial-gradient(90% 38% at 78% 0%, rgba(209, 225, 252, 0.55) 0%, rgba(249, 250, 254, 0) 100%),
+    #fff;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.cp-log[hidden] {
+  display: none;
+}
+
+.cp-welcome {
+  padding: 20px 4px 4px;
+  text-align: center;
+}
+
+.cp-welcome-logo {
+  width: 56px;
+  height: 55px;
+  margin: 0 auto 12px;
+}
+
+.cp-welcome-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.cp-welcome-text {
+  margin-top: 4px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.cp-welcome .cp-chips {
+  justify-content: center;
+  margin-top: 18px;
+}
+
+.cp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.copilot .cp-chip {
+  padding: 8px 14px;
+  border: 1.5px solid var(--blue);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--blue);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: left;
+  transition: background-color 0.15s ease;
+}
+
+.copilot .cp-chip:hover:not(:disabled) {
+  background: var(--blue-hover);
+}
+
+.copilot .cp-chip:disabled {
+  opacity: 0.5;
+}
+
+.cp-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.cp-row--user {
+  justify-content: flex-end;
+}
+
+.cp-avatar {
+  width: 30px;
+  height: 29px;
+  flex: none;
+  margin-top: 2px;
+}
+
+.cp-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  max-width: calc(100% - 38px);
+  flex: 1;
+}
+
+.cp-stack--user {
+  align-items: flex-end;
+  flex: 0 1 auto;
+  max-width: 82%;
+}
+
+.cp-bubble {
+  max-width: 100%;
+  padding: 10px 14px;
+  font-size: 14.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.cp-bubble--user {
+  background: var(--blue);
+  color: #fff;
+  border-radius: 18px 18px 6px 18px;
+  white-space: pre-wrap;
+}
+
+.cp-bubble--bot {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px 18px 18px 18px;
+}
+
+.cp-p + .cp-p,
+.cp-p + .cp-list,
+.cp-list + .cp-p {
+  margin-top: 8px;
+}
+
+.cp-list {
+  padding-left: 20px;
+}
+
+.cp-list li + li {
+  margin-top: 2px;
+}
+
+.cp-bubble strong {
+  font-weight: 700;
+}
+
+.copilot .cp-link {
+  color: var(--blue);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.copilot .cp-link:hover {
+  text-decoration-thickness: 2px;
+}
+
+.cp-time {
+  margin-top: 4px;
+  padding: 0 4px;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  opacity: 0.85;
+}
+
+/* Typing indicator */
+
+.cp-typing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cp-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.cp-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+  opacity: 0.35;
+  animation: cp-bounce 1.2s ease-in-out infinite;
+}
+
+.cp-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.cp-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes cp-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.cp-progress {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* Errors */
+
+.cp-bubble--error,
+.cp-inline-error {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  column-gap: 8px;
+  row-gap: 8px;
+  align-items: start;
+  background: var(--tile-red);
+  border: 1px solid #f6c6c9;
+  color: #7a0b10;
+  font-size: 13.5px;
+}
+
+.cp-bubble--error {
+  border-radius: 6px 18px 18px 18px;
+}
+
+.cp-inline-error {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+}
+
+.cp-bubble--error svg,
+.cp-inline-error svg {
+  width: 20px;
+  height: 20px;
+  color: var(--danger);
+}
+
+.cp-bubble--error .cp-btn,
+.cp-inline-error .cp-btn {
+  grid-column: 2;
+  justify-self: start;
+}
+
+/* ------------------------------------------------------------- Buttons */
+
+.copilot .cp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.copilot .cp-btn:hover:not(:disabled) {
+  background: var(--blue-hover);
+  border-color: var(--line-strong);
+}
+
+.copilot .cp-btn svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.copilot .cp-btn--primary {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+}
+
+.copilot .cp-btn--primary:hover:not(:disabled) {
+  background: #0a2fd6;
+  border-color: #0a2fd6;
+}
+
+.copilot .cp-btn--danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #fff;
+}
+
+.copilot .cp-btn--danger:hover:not(:disabled) {
+  background: #a10e15;
+  border-color: #a10e15;
+}
+
+.copilot .cp-btn--danger-outline {
+  border-color: #f0b4b8;
+  color: var(--danger);
+}
+
+.copilot .cp-btn:disabled {
+  opacity: 0.5;
+}
+
+.copilot .cp-btn--small {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+
+.cp-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: cp-spin 0.8s linear infinite;
+  vertical-align: -2px;
+  margin-right: 6px;
+}
+
+@keyframes cp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ------------------------------------------------------ Appointment card */
+
+.cp-appt {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 14px 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 2px 6px rgba(8, 36, 92, 0.06);
+}
+
+.cp-appt-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.copilot .cp-appt-num {
+  color: var(--blue);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+}
+
+.copilot .cp-appt-num:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cp-appt-subject {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.cp-appt-facts {
+  margin-top: 8px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 5px;
+}
+
+.cp-appt-facts li {
+  display: grid;
+  grid-template-columns: 17px 1fr;
+  gap: 8px;
+  align-items: start;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
+.cp-appt-facts svg {
+  width: 17px;
+  height: 17px;
+  color: var(--icon-navy);
+}
+
+.cp-appt-facts .cp-link {
+  font-weight: 600;
+}
+
+.cp-appt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.cp-appt-note {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.cp-confirm {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.cp-confirm-text {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.cp-confirm-text span {
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+
+.cp-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* Status pill: the stat-tile palette from My Day. */
+
+.cp-pill {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cp-pill--scheduled {
+  background: var(--tile-blue);
+  color: #0045b8;
+}
+
+.cp-pill--travel,
+.cp-pill--progress {
+  background: var(--tile-amber);
+  color: #8a4b00;
+}
+
+.cp-pill--done {
+  background: var(--duty-green);
+  color: #0b6b06;
+}
+
+.cp-pill--stopped {
+  background: var(--tile-red);
+  color: var(--danger);
+}
+
+.cp-pill--neutral {
+  background: var(--surface);
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+}
+
+/* ---------------------------------------------------------- Detail view */
+
+.cp-detail {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cp-detail-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 6px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfbfc;
+}
+
+.cp-detail-title {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.cp-detail-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px 20px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.cp-source {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.cp-source--stale {
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--tile-amber);
+  color: #6b3a00;
+}
+
+.cp-detail-subject {
+  margin-top: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.cp-fields {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.cp-field {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: 10px;
+  padding: 9px 12px;
+  font-size: 13px;
+}
+
+.cp-field + .cp-field {
+  border-top: 1px solid var(--line);
+}
+
+.cp-field:nth-child(odd) {
+  background: var(--surface);
+}
+
+.cp-field dt {
+  color: var(--ink-soft);
+}
+
+.cp-field dd {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------- Composer */
+
+.cp-composer {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  background: #fff;
+}
+
+.cp-input {
+  flex: 1;
+  min-height: 46px;
+  max-height: 132px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14.5px;
+  line-height: 1.4;
+  resize: none;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.cp-input::placeholder {
+  color: #6b84a8;
+}
+
+.copilot .cp-input:focus-visible {
+  outline: none;
+  border-color: var(--blue);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(14, 59, 252, 0.15);
+  border-radius: var(--r-md);
+}
+
+.cp-input:disabled {
+  opacity: 0.65;
+}
+
+.copilot .cp-send {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+  transition:
+    background-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.copilot .cp-send:hover:not(:disabled) {
+  background: #0a2fd6;
+}
+
+.copilot .cp-send:disabled {
+  opacity: 0.4;
+}
+
+.cp-send svg {
+  width: 21px;
+  height: 21px;
+}
+
+/* ------------------------------------------------------------- Minimised */
+
+.cp-mini {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 6px 6px 8px;
+  border-radius: 999px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--navy) 0%, #013068 55%, #133e70 100%);
+  box-shadow: var(--card-shadow);
+  animation: cp-rise 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.copilot .cp-mini-open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 8px 2px 2px;
+  border-radius: 999px;
+}
+
+.cp-mini-logo {
+  width: 26px;
+  height: 25px;
+}
+
+.cp-mini-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.cp-mini .cp-online {
+  margin-top: 0;
+}
+
+.cp-mini-chevron {
+  width: 20px;
+  height: 20px;
+}
+
+@keyframes cp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* ---------------------------------------------------------------- Mobile */
+
+@media (max-width: 760px) {
+  .cp-panel {
+    inset: 0;
+    width: auto;
+    height: auto;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    transform-origin: bottom center;
+  }
+
+  .cp-panel[data-state="closed"],
+  .cp-panel[data-state="minimised"] {
+    transform: translateY(32px);
+  }
+
+  .cp-header {
+    height: calc(64px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .cp-composer {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+
+  /* 16px keeps iOS from zooming into the field. */
+  .cp-input {
+    font-size: 16px;
+  }
+
+  .cp-mini {
+    right: 16px;
+    bottom: 16px;
+  }
+
+  .cp-field {
+    grid-template-columns: 116px 1fr;
+  }
+}
+
+/* -------------------------------------------------------- Reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  .cp-panel,
+  .cp-panel[data-state="closed"],
+  .cp-panel[data-state="minimised"] {
+    transform: none;
+    transition: visibility 0s;
+  }
+
+  .cp-mini {
+    animation: none;
+  }
+
+  .cp-dots i {
+    animation: none;
+    opacity: 0.6;
+  }
+
+  .cp-spinner {
+    animation-duration: 2.4s;
+  }
+
+  .copilot .cp-btn,
+  .copilot .cp-chip,
+  .copilot .cp-send,
+  .cp-icon-btn,
+  .cp-input {
+    transition: none;
+  }
+}
