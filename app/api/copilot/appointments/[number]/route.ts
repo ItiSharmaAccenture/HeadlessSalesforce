@@ -6,10 +6,18 @@
  */
 
 import { describeFailure, getAppointmentDetail, updateAppointmentStatus } from '@/lib/copilot';
+import { readTechnician } from '@/lib/session';
 import { STATUS_ACTION_LABELS, type StatusAction } from '@/types/copilot';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+function signedOut(): Response {
+  return Response.json(
+    { error: 'You are signed out. Reload the page and sign in again.', retryable: false },
+    { status: 401 },
+  );
+}
 
 function failed(error: unknown): Response {
   const failure = describeFailure(error);
@@ -18,8 +26,11 @@ function failed(error: unknown): Response {
 
 export async function GET(_request: Request, ctx: RouteContext<'/api/copilot/appointments/[number]'>): Promise<Response> {
   const { number } = await ctx.params;
+  const technician = await readTechnician();
+  if (!technician) return signedOut();
+
   try {
-    return Response.json(await getAppointmentDetail(number));
+    return Response.json(await getAppointmentDetail(technician, number));
   } catch (error) {
     return failed(error);
   }
@@ -27,6 +38,8 @@ export async function GET(_request: Request, ctx: RouteContext<'/api/copilot/app
 
 export async function POST(request: Request, ctx: RouteContext<'/api/copilot/appointments/[number]'>): Promise<Response> {
   const { number } = await ctx.params;
+  const technician = await readTechnician();
+  if (!technician) return signedOut();
 
   let action: unknown;
   try {
@@ -39,7 +52,7 @@ export async function POST(request: Request, ctx: RouteContext<'/api/copilot/app
   }
 
   try {
-    return Response.json(await updateAppointmentStatus(number, action as StatusAction));
+    return Response.json(await updateAppointmentStatus(technician, number, action as StatusAction));
   } catch (error) {
     return failed(error);
   }

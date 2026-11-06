@@ -15,7 +15,6 @@ import {
   CustomerIcon,
   DetailsIcon,
   DirectionsIcon,
-  ExternalIcon,
   PinIcon,
   RetryIcon,
   StatusIcon,
@@ -352,13 +351,6 @@ export function AppointmentDetail({ detail, actions, state, titleId, backRef, on
                   <DirectionsIcon />
                   Directions
                   <span className="cp-sr"> (opens Google Maps in a new tab)</span>
-                </a>
-              )}
-              {detail.data?.salesforceUrl && (
-                <a className="cp-btn" href={detail.data.salesforceUrl} target="_blank" rel="noopener noreferrer">
-                  <ExternalIcon />
-                  Open in Salesforce
-                  <span className="cp-sr"> (opens in a new tab)</span>
                 </a>
               )}
               {statusActions.map((action) => (

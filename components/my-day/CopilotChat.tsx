@@ -29,11 +29,12 @@ import {
 } from '@/types/copilot';
 import { AppointmentCard, AppointmentDetail, type ActionState, type DetailState } from './AppointmentViews';
 import { formatClock } from './format';
-import { AlertIcon, ChatIcon, CloseIcon, ExpandIcon, MinimiseIcon, RetryIcon, SendIcon } from './icons';
+import { AlertIcon, ChatIcon, CloseIcon, EnlargeIcon, ExpandIcon, MinimiseIcon, RetryIcon, SendIcon, ShrinkIcon } from './icons';
 import { MessageText } from './MessageText';
 import './copilot.css';
 
 const STORAGE_KEY = 'adt-copilot:v1';
+const SIZE_KEY = 'adt-copilot:size:v1';
 const WEEK_PROMPT = "What's my schedule this week?";
 const STARTERS = ["What's my schedule today?", WEEK_PROMPT, "What's my next appointment?", "I'm on my way"];
 const MAX_HISTORY = 12;
@@ -41,6 +42,8 @@ const OFFLINE_MESSAGE = "Couldn't reach ADT Copilot. Check your connection and t
 const LOGO = '/assets/my-day/adt-logo.png';
 
 type View = 'closed' | 'open' | 'minimised';
+/** How much room the panel takes: a compact corner card, or a large pane. */
+type Size = 'normal' | 'expanded';
 type Connection = 'connecting' | 'online' | 'offline';
 type Failure = { message: string; retryable: boolean };
 
@@ -66,6 +69,15 @@ interface Conversation {
   turns: Turn[];
   /** Latest copy of every appointment seen, so all cards for one number stay in step. */
   appointments: Record<string, Appointment>;
+}
+
+function loadSize(): Size {
+  if (typeof window === 'undefined') return 'normal';
+  try {
+    return window.sessionStorage.getItem(SIZE_KEY) === 'expanded' ? 'expanded' : 'normal';
+  } catch {
+    return 'normal';
+  }
 }
 
 class ApiFailure extends Error {
@@ -145,6 +157,7 @@ interface Props {
 
 export default function CopilotChat({ firstName, fontClassName }: Props) {
   const [view, setView] = useState<View>('closed');
+  const [size, setSize] = useState<Size>(loadSize);
   const [conversation, setConversation] = useState<Conversation>(loadConversation);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState('');
@@ -185,6 +198,14 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
       // Storage can be full or disabled; the conversation still works in memory.
     }
   }, [conversation]);
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(SIZE_KEY, size);
+    } catch {
+      // Not worth surfacing: the size simply will not be remembered.
+    }
+  }, [size]);
 
   useEffect(() => {
     if (view === 'minimised') {
@@ -516,6 +537,7 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
         id={panelId}
         className="cp-panel"
         data-state={view}
+        data-size={size}
         role="dialog"
         aria-modal="false"
         aria-labelledby={titleId}
@@ -536,6 +558,16 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
             </p>
           </div>
           <div className="cp-header-actions">
+            <button
+              type="button"
+              className="cp-icon-btn"
+              onClick={() => setSize((current) => (current === 'expanded' ? 'normal' : 'expanded'))}
+              aria-label={size === 'expanded' ? 'Shrink ADT Copilot' : 'Expand ADT Copilot'}
+              aria-pressed={size === 'expanded'}
+              title={size === 'expanded' ? 'Shrink' : 'Expand'}
+            >
+              {size === 'expanded' ? <ShrinkIcon /> : <EnlargeIcon />}
+            </button>
             <button type="button" className="cp-icon-btn" onClick={() => setView('minimised')} aria-label="Minimise ADT Copilot">
               <MinimiseIcon />
             </button>

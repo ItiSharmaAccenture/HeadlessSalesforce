@@ -252,10 +252,62 @@ To remove individual tools without enumerating every tool you want to keep:
 SALESFORCE_TOOL_BLOCKLIST=deleteSobjectRecord,deleteRelatedRecord
 ```
 
+## My Day technician dashboard
+
+`/my-day` is a second surface on the same backend: a technician dashboard with
+the ADT Copilot chat panel. It is driven by its own routes (`/api/copilot`,
+`/api/copilot/appointments/[number]`) and does not affect `/api/chat`.
+
+### Sign-in
+
+The dashboard asks for a name and a technician ID. **This is a demo stand-in for
+authentication, not a security boundary** — nothing is verified and there is no
+password. What matters is the name: it is what the appointment action is asked
+for, so it has to match the technician as Salesforce knows them. A name the org
+does not recognise simply yields an empty schedule, reported as such.
+
+The identity is stored in an httpOnly cookie set by `POST /api/session` and read
+server-side on every request. The browser never sends it in a chat payload, and
+page scripts cannot read it. The technician ID is shown on the dashboard and is
+never sent to Salesforce. Sign out from the profile button in the header.
+
+Appointments are remembered per technician so a job stays reachable after it
+leaves the Scheduled list; that memory is keyed by identity, so one technician
+cannot open another's appointment.
+
+### How tools are chosen
+
+The Copilot needs to know which tool lists appointments, which sets a status and
+which closes an appointment. It works these out from the **published input
+schemas**, so no Apex class name appears anywhere in the code:
+
+| Capability | Recognised by |
+|---|---|
+| Status change | a status-like property carrying an `enum`; the enum values are the literals sent, so the buttons follow the org's own picklist wording |
+| Close | acts on one appointment and takes no status at all |
+| Schedule | takes a technician identifier and no appointment identifier — a per-technician list rather than a single-job lookup |
+
+Rename an Apex class, or move to another org, and the feature keeps working.
+A capability nothing provides simply does not appear: `GET /api/copilot` returns
+only the status actions that are actually achievable, and the card renders only
+those buttons. `COPILOT_TOOL_SCHEDULE` / `_STATUS` / `_CLOSE` override the
+inference if an org publishes too little to infer from.
+
+### Status changes do not go through Gemini
+
+The tools that change a status are withheld from the model; status changes run
+from the card buttons, so a confirmation step cannot be skipped. The model sees
+the read tools only.
+
+> Note: this filtering is driven by capability resolution and the MCP
+> `destructiveHint`, **not** by the generic `mutating` flag. Salesforce publishes
+> `readOnlyHint: false` on every invocable Apex action, read-only ones included,
+> so filtering on that flag would withhold the entire toolset.
+
 ## Tests
 
 ```bash
-npm test        # 181 tests
+npm test        # 232 tests
 npm run lint
 npm run build
 ```
@@ -264,7 +316,9 @@ Coverage: the open default policy and the restricted policy, argument and schema
 validation, SOQL/SOSL parsing and limit clamping, multi-endpoint discovery,
 routing and name collisions, partial endpoint failure, MCP response parsing, SSE
 framing and parsing, PKCE and OAuth state handling, setup-route access control,
-and the Gemini tool-calling loop with both Salesforce and Gemini mocked.
+the Gemini tool-calling loop with both Salesforce and Gemini mocked, Copilot
+capability resolution from schemas, the capability overrides, the sign-in cookie,
+and per-technician isolation.
 
 ---
 
@@ -324,27 +378,40 @@ was not verified. Confirm against your org's documentation before adopting it.
 
 Verified by running it, against a live Developer Edition org and a live Gemini key:
 
-- Build, lint and the 181 automated tests pass.
-- The OAuth flow completes and refreshes; expired refresh tokens are detected,
-  cleared, and reported as `configuration_required` rather than as connected.
-- A live MCP handshake against `platform/sobject-all`, with dynamic discovery
-  returning 11 tools, all 11 offered to Gemini under the open default policy.
-- Real tool calls returning real records: Account, Contact, and Opportunity with
-  an `Owner.Name` traversal — the last two of which the previous restricted
-  policy refused, so the delegation change is confirmed working.
-- The row cap is applied to queries on the way to Salesforce.
-- With Salesforce unreachable, the assistant reports the failure and does not
-  invent records.
+- Build, lint and the 232 automated tests pass.
+- OAuth completes and refreshes; expired refresh tokens are detected, cleared and
+  reported as `configuration_required` rather than as connected.
+- Live MCP handshake with dynamic discovery; every discovered tool offered to
+  Gemini under the open default policy.
+- Real tool calls returning real records: Account, Contact and Opportunity with
+  an `Owner.Name` traversal.
+- With Salesforce unreachable, the assistant reports the failure and invents nothing.
+- **My Day sign-in**: `/my-day` shows the sign-in screen with no cookie and the
+  Copilot routes return `401`; after signing in, the header, greeting, mission
+  card and technician ID all reflect the entered identity.
+- **Identity reaches Salesforce**: the appointment action is called with the
+  signed-in name under the key its own schema publishes, and real appointments
+  come back with `ownerName` matching. Signing in as a different name returns
+  that technician's (empty) schedule, with no leakage from the first.
+- **Capability resolution against the real org**: with all three Apex class-name
+  regexes deleted, the schedule and close actions are still resolved from their
+  schemas, and `GET /api/copilot` correctly offers only `complete` — the org has
+  no status-update action.
+- Both Copilot paths: the deterministic schedule answer and a Gemini-routed
+  question that called the schedule tool and answered from its data.
+- Sign-out clears the cookie and both surfaces return to the signed-out state.
 
 **Not verified:**
 
 - **Write and action tools have not been executed.** `createSobjectRecord`,
-  `updateSobjectRecord` and `deleteSobjectRecord` are discovered and offered to
-  Gemini, and the routing path they would take is the same one the read tools
-  were verified on, but no write was performed against a real org.
-- **Multiple simultaneous endpoints have only been tested with mocks.** The
-  fan-out, routing, name-collision and partial-failure behaviour is covered by
-  `tests/mcp-session.test.ts`; live verification needs a second activated MCP
-  server, which the test org does not have.
+  `updateSobjectRecord`, `deleteSobjectRecord` and the close action are
+  discovered and reachable, but no write was performed against a real org. The
+  card's status buttons therefore remain untested end to end.
+- **Multiple simultaneous endpoints are only mock-verified.** Fan-out, routing,
+  name collisions and partial failure are covered by `tests/mcp-session.test.ts`;
+  live testing needs two activated MCP servers at once.
+- **Status-change capability detection is untested against a real status tool.**
+  The org exposes no action with an enum'd status property, so that branch is
+  only covered by unit tests with synthetic schemas.
 - Gemini is pinned to `gemini-3.6-flash` because `gemini-3.8-flash` was
   returning `503 high demand`. Revert `GEMINI_MODEL` when that clears.

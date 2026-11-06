@@ -63,6 +63,24 @@ export function ExpandIcon(props: IconProps) {
   );
 }
 
+/** Diagonal arrows out: make the panel bigger. */
+export function EnlargeIcon(props: IconProps) {
+  return (
+    <Stroke {...props} width={2.1}>
+      <path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7" />
+    </Stroke>
+  );
+}
+
+/** Diagonal arrows in: return the panel to the corner card. */
+export function ShrinkIcon(props: IconProps) {
+  return (
+    <Stroke {...props} width={2.1}>
+      <path d="M20 4l-6 6m0 0V5m0 5h5M4 20l6-6m0 0v5m0-5H5" />
+    </Stroke>
+  );
+}
+
 export function SendIcon(props: IconProps) {
   return (
     <Stroke {...props} width={2.1}>
@@ -111,15 +129,6 @@ export function DirectionsIcon(props: IconProps) {
   return (
     <Stroke {...props} width={2}>
       <path d="M3.5 11.2 20.2 3.8a.4.4 0 0 1 .5.5L13.3 21a.4.4 0 0 1-.8-.1l-1.7-7-7-1.9a.4.4 0 0 1-.3-.8Z" />
-    </Stroke>
-  );
-}
-
-export function ExternalIcon(props: IconProps) {
-  return (
-    <Stroke {...props} width={2}>
-      <path d="M14 4h6v6M20 4l-8.5 8.5" />
-      <path d="M18 14.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.5" />
     </Stroke>
   );
 }

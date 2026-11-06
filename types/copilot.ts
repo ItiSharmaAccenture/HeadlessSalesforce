@@ -6,7 +6,7 @@
  */
 
 /**
- * One service appointment exactly as FSTechAppointmentAction returned it. Every
+ * One service appointment exactly as the schedule action returned it. Every
  * field is optional because the Apex action, not this app, owns the shape; the
  * detail view renders whatever keys actually arrive.
  */
@@ -69,8 +69,6 @@ export interface AppointmentDetailResponse {
   meta: ScheduleMeta;
   /** False when Salesforce no longer lists it and this is the last known copy. */
   live: boolean;
-  /** Record page in the org, when the instance URL is known. */
-  salesforceUrl?: string;
   note?: string;
 }
 

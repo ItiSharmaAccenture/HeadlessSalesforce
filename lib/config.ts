@@ -154,6 +154,20 @@ export const config = {
    */
   toolBlocklist: list('SALESFORCE_TOOL_BLOCKLIST', []),
 
+  /**
+   * Optional overrides for the My Day Copilot's capability detection, matched
+   * as a case-insensitive substring of the tool name.
+   *
+   * Normally left unset: capabilities are inferred from the published schemas
+   * (see lib/copilot-capabilities.ts). Set one only when an org's schemas do
+   * not expose enough to infer from, or to force a particular tool.
+   */
+  copilotTools: {
+    schedule: optional('COPILOT_TOOL_SCHEDULE'),
+    status: optional('COPILOT_TOOL_STATUS'),
+    close: optional('COPILOT_TOOL_CLOSE'),
+  },
+
   appName: process.env.NEXT_PUBLIC_APP_NAME ?? 'Salesforce AI Sales Assistant',
 } as const;
 

@@ -11,6 +11,7 @@
 import { config } from '@/lib/config';
 import { describeFailure, getCapabilities, runCopilotTurn } from '@/lib/copilot';
 import { acquire, sweep } from '@/lib/rate-limit';
+import { readTechnician } from '@/lib/session';
 import { encodeEvent } from '@/lib/stream';
 import type { CopilotChatRequest, CopilotEvent } from '@/types/copilot';
 
@@ -24,7 +25,14 @@ const SSE_HEADERS = {
   'X-Accel-Buffering': 'no',
 } as const;
 
+/** Nobody signed in: the dashboard shows the sign-in screen, so say so plainly. */
+const SIGNED_OUT = 'You are signed out. Reload the page and sign in again.';
+
 export async function GET(): Promise<Response> {
+  if (!(await readTechnician())) {
+    return Response.json({ error: SIGNED_OUT, retryable: false }, { status: 401 });
+  }
+
   try {
     return Response.json(await getCapabilities());
   } catch (error) {
@@ -76,6 +84,11 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = parseBody(raw);
   if (!parsed.ok) return errorStream(parsed.reason, false);
 
+  // Identity comes from the cookie, never from the request body, so a turn
+  // cannot claim to be someone else.
+  const technician = await readTechnician();
+  if (!technician) return errorStream(SIGNED_OUT, false);
+
   const gate = acquire(clientKey(request));
   if (!gate.ok) return errorStream(gate.reason, true);
 
@@ -93,7 +106,7 @@ export async function POST(request: Request): Promise<Response> {
       request.signal.addEventListener('abort', onAbort);
 
       try {
-        for await (const event of runCopilotTurn(parsed.body)) {
+        for await (const event of runCopilotTurn(technician, parsed.body)) {
           if (closed || request.signal.aborted) break;
           send(event);
         }

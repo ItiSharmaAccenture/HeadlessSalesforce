@@ -14,6 +14,23 @@ interface Props extends Context {
 const BULLET = /^\s*(?:[-*•]|\d+[.)])\s+/;
 
 /**
+ * Splits one block into its lead-in lines and the bullet run that follows.
+ *
+ * A model often writes "Here are the parts:" and the bullets as a single block,
+ * without the blank line that would separate them. Treating the whole block as
+ * prose would render the bullets as literal "- " text, so the run is lifted out
+ * into a real list. Bullets interleaved with prose are left as prose, because
+ * splitting those would reorder the reply.
+ */
+export function splitBlock(lines: string[]): { lead: string[]; bullets: string[] } {
+  const firstBullet = lines.findIndex((line) => BULLET.test(line));
+  const trailingRun = firstBullet !== -1 && lines.slice(firstBullet).every((line) => BULLET.test(line));
+
+  if (!trailingRun) return { lead: lines, bullets: [] };
+  return { lead: lines.slice(0, firstBullet), bullets: lines.slice(firstBullet) };
+}
+
+/**
  * Renders an assistant reply: short paragraphs, simple lists and **bold**.
  * Appointment numbers open the detail view; addresses Salesforce returned open
  * in Google Maps. Nothing else in the text becomes a link.
@@ -26,32 +43,34 @@ export function MessageText({ text, addresses, onOpenAppointment }: Props) {
     <>
       {blocks.map((block, index) => {
         const lines = block.split('\n').filter((line) => line.trim());
-        if (lines.length > 0 && lines.every((line) => BULLET.test(line))) {
-          const items = lines.map((line, item) => <li key={item}>{inline(line.replace(BULLET, ''), context)}</li>);
-          return /^\s*\d/.test(lines[0]) ? (
-            <ol key={index} className="cp-list">
-              {items}
-            </ol>
-          ) : (
-            <ul key={index} className="cp-list">
-              {items}
-            </ul>
-          );
-        }
+
+        const { lead, bullets } = splitBlock(lines);
 
         return (
-          <p key={index} className="cp-p">
-            {lines.map((line, item) => (
-              <Fragment key={item}>
-                {item > 0 && <br />}
-                {inline(line, context)}
-              </Fragment>
-            ))}
-          </p>
+          <Fragment key={index}>
+            {lead.length > 0 && (
+              <p className="cp-p">
+                {lead.map((line, item) => (
+                  <Fragment key={item}>
+                    {item > 0 && <br />}
+                    {inline(line, context)}
+                  </Fragment>
+                ))}
+              </p>
+            )}
+            {bullets.length > 0 && <List lines={bullets} context={context} />}
+          </Fragment>
         );
       })}
     </>
   );
+}
+
+/** Ordered when the first marker is a number, unordered otherwise. */
+function List({ lines, context }: { lines: string[]; context: Context }) {
+  const items = lines.map((line, item) => <li key={item}>{inline(line.replace(BULLET, ''), context)}</li>);
+
+  return /^\s*\d/.test(lines[0]) ? <ol className="cp-list">{items}</ol> : <ul className="cp-list">{items}</ul>;
 }
 
 function inline(text: string, context: Context): ReactNode[] {

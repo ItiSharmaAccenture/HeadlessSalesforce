@@ -117,6 +117,34 @@
     visibility 0s linear 0s;
 }
 
+/* Expanded: a working pane rather than a corner card. Capped so it still sits
+   inside the viewport on a laptop, and widened first because the appointment
+   cards and tables benefit from width more than height. */
+.cp-panel[data-size="expanded"] {
+  width: min(760px, calc(100vw - 48px));
+  height: min(860px, calc(100dvh - 48px));
+}
+
+/* Below that, the corner card is already near full width, so expanding only
+   buys height. */
+@media (max-width: 640px) {
+  .cp-panel[data-size="expanded"] {
+    width: calc(100vw - 32px);
+    height: calc(100dvh - 32px);
+    right: 16px;
+    bottom: 16px;
+  }
+}
+
+/* The reply column should not stretch to an unreadable measure. */
+.cp-panel[data-size="expanded"] .cp-stack--user {
+  max-width: 62%;
+}
+
+.cp-panel[data-size="expanded"] .cp-log {
+  padding-inline: 22px;
+}
+
 .cp-panel[data-state="closed"],
 .cp-panel[data-state="minimised"] {
   opacity: 0;

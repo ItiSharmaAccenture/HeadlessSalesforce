@@ -3,7 +3,12 @@ import Image from "next/image";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import type { ReactNode } from "react";
 import CopilotChat from "@/components/my-day/CopilotChat";
-import { currentTechnician as technician } from "@/lib/technician";
+import ProfileMenu from "@/components/my-day/ProfileMenu";
+import SalesforceStatus from "@/components/my-day/SalesforceStatus";
+import TechnicianLogin from "@/components/my-day/TechnicianLogin";
+import { readTechnician } from "@/lib/session";
+import { TECHNICIAN_PHOTO, TECHNICIAN_ROLE } from "@/lib/technician";
+import type { Technician } from "@/types/technician";
 import "./my-day.css";
 
 const jakarta = Plus_Jakarta_Sans({
@@ -20,7 +25,8 @@ export const metadata: Metadata = {
 /* ------------------------------------------------------------------ Data
    Static demo values from the design. Replace with Salesforce data later
    (e.g. the Get Technician Appointments action via your API route). The
-   technician comes from lib/technician so the Copilot API uses the same one. */
+   technician comes from the sign-in cookie, so the dashboard and the Copilot
+   API always agree on who is using the app. */
 
 const stats: { value: string; label: string; tone: "blue" | "green" | "amber"; icon: ReactNode }[] = [
   { value: "3", label: "Jobs Today", tone: "blue", icon: <CalendarIcon /> },
@@ -29,8 +35,8 @@ const stats: { value: string; label: string; tone: "blue" | "green" | "amber"; i
   { value: "7.5 h", label: "Total Time", tone: "blue", icon: <ClockIcon /> },
 ];
 
-const details: { label: string; value: ReactNode; icon: ReactNode }[] = [
-  { label: "Technician ID", value: "TCH-7842", icon: <BadgeIcon /> },
+const detailsFor = (technician: Technician): { label: string; value: ReactNode; icon: ReactNode }[] => [
+  { label: "Technician ID", value: technician.id, icon: <BadgeIcon /> },
   { label: "Home Territory", value: "Round Rock, TX", icon: <PinIcon /> },
   { label: "Vehicle", value: "ADT-3487 (Ford Transit)", icon: <TruckIcon /> },
   { label: "Today’s Hours", value: "8:00 AM – 4:30 PM", icon: <ClockOutlineIcon /> },
@@ -47,7 +53,15 @@ const details: { label: string; value: ReactNode; icon: ReactNode }[] = [
 
 /* ------------------------------------------------------------------ Page */
 
-export default function MyDayPage() {
+export default async function MyDayPage() {
+  const technician = await readTechnician();
+
+  // Rendered instead of the dashboard, not inside it: `.myday` is a size
+  // container, which would capture any fixed positioning in the sign-in screen.
+  if (!technician) return <TechnicianLogin fontClassName={jakarta.variable} />;
+
+  const details = detailsFor(technician);
+
   return (
     <div className={`myday ${jakarta.variable}`}>
       <div className="md-frame">
@@ -58,11 +72,7 @@ export default function MyDayPage() {
           <h1 className="md-page-title">My Day</h1>
 
           <div className="md-header-right">
-            <div className="md-sf-pill" role="status">
-              <span className="md-dot" aria-hidden="true" />
-              <Image className="md-sf-logo" src="/assets/my-day/salesforce-logo.png" alt="" width={53} height={39} />
-              <span>Salesforce Connected</span>
-            </div>
+            <SalesforceStatus />
 
             <button className="md-bell" type="button" aria-label="Notifications, new items">
               <BellIcon />
@@ -71,11 +81,7 @@ export default function MyDayPage() {
 
             <div className="md-vdivider md-vdivider--profile" aria-hidden="true" />
 
-            <button className="md-profile" type="button" aria-label={`Account menu for ${technician.fullName}`}>
-              <Image className="md-profile-avatar" src={technician.photo} alt="" width={58} height={58} />
-              <span className="md-profile-name">{technician.fullName}</span>
-              <ChevronDownIcon />
-            </button>
+            <ProfileMenu fullName={technician.fullName} technicianId={technician.id} photo={TECHNICIAN_PHOTO} />
           </div>
         </header>
 
@@ -108,17 +114,15 @@ export default function MyDayPage() {
             Your Mission Today
           </h2>
 
-          <Image className="md-tech-photo" src={technician.photo} alt={technician.fullName} width={196} height={196} />
+          <Image className="md-tech-photo" src={TECHNICIAN_PHOTO} alt={technician.fullName} width={196} height={196} />
 
           <div className="md-tech">
             <p className="md-tech-name">{technician.fullName}</p>
-            <p className="md-tech-role">{technician.role}</p>
-            {technician.onDuty && (
-              <span className="md-duty">
-                <DutyCheckIcon />
-                On Duty
-              </span>
-            )}
+            <p className="md-tech-role">{TECHNICIAN_ROLE}</p>
+            <span className="md-duty">
+              <DutyCheckIcon />
+              On Duty
+            </span>
           </div>
 
           <CopilotChat firstName={technician.firstName} fontClassName={jakarta.variable} />
@@ -150,14 +154,6 @@ function BellIcon() {
       <path d="M12 2.6v1.2" />
       <path d="M6.2 9.6a5.8 5.8 0 0 1 11.6 0c0 6.4 2.7 8.2 2.7 8.2H3.5s2.7-1.8 2.7-8.2" />
       <path d="M10.2 21a2 2 0 0 0 3.6 0" />
-    </svg>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="m6 9 6 6 6-6" />
     </svg>
   );
 }

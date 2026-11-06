@@ -8,8 +8,14 @@ import {
   normaliseAppointmentNumber,
   readSchedule,
 } from '@/lib/copilot';
+import { toTechnician } from '@/lib/technician';
 
-/** The shape Hosted MCP returns for FSTechAppointmentAction (structuredContent). */
+const technician = toTechnician('Sayantan Pal', 'TCH-7842');
+
+/**
+ * The shape Hosted MCP returns for an invocable Apex action (structuredContent).
+ * `actionName` is carried for realism only; nothing reads it.
+ */
 function actionPayload(outputValues: Record<string, unknown>, isSuccess = true) {
   return { content: [{ actionName: 'FSTechAppointmentAction', errors: null, isSuccess, outputValues }] };
 }
@@ -84,6 +90,7 @@ describe('readSchedule', () => {
         currentDateTime: 'Fri, Nov 6, 2026 12:08 AM',
         success: true,
       }),
+      technician,
     );
 
     expect(schedule?.appointments.map((appointment) => appointment.appointmentNumber)).toEqual(['SA-0164', 'SA-0170']);
@@ -96,18 +103,18 @@ describe('readSchedule', () => {
   });
 
   it('returns an empty list when Salesforce found nothing', () => {
-    expect(readSchedule(actionPayload({ appointmentsJson: '[]', success: true }))?.appointments).toEqual([]);
+    expect(readSchedule(actionPayload({ appointmentsJson: '[]', success: true }), technician)?.appointments).toEqual([]);
   });
 
   it('raises the action message when Salesforce reports a failure', () => {
-    expect(() => readSchedule(actionPayload({ success: false, message: 'No technician named X.' }))).toThrow(CopilotError);
-    expect(() => readSchedule(actionPayload({ success: false, message: 'No technician named X.' }))).toThrow(
+    expect(() => readSchedule(actionPayload({ success: false, message: 'No technician named X.' }), technician)).toThrow(CopilotError);
+    expect(() => readSchedule(actionPayload({ success: false, message: 'No technician named X.' }), technician)).toThrow(
       'No technician named X.',
     );
   });
 
   it('returns null for payloads that are not action results', () => {
-    expect(readSchedule({ records: [] })).toBeNull();
+    expect(readSchedule({ records: [] }, technician)).toBeNull();
   });
 });
 
@@ -115,6 +122,7 @@ describe('digestSchedule', () => {
   it("works out local dates and timing in the technician's zone", () => {
     const schedule = readSchedule(
       actionPayload({ appointmentsJson: JSON.stringify(appointments), timeZone: 'America/Los_Angeles', success: true }),
+      technician,
     )!;
     // 08:08 UTC on Nov 6 is still 00:08 on Friday Nov 6 in Los Angeles.
     const digest = JSON.parse(digestSchedule(schedule, new Date('2026-11-06T08:08:00Z')));

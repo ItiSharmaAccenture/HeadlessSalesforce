@@ -55,6 +55,8 @@ export interface ApprovedTool {
   inputSchema: JsonSchema;
   /** True when the server flagged the tool as mutating. Surfaced, not blocked. */
   mutating?: boolean;
+  /** Carried through from discovery so callers can read the hints themselves. */
+  annotations?: DiscoveredTool['annotations'];
 }
 
 export interface RejectedTool {
@@ -140,6 +142,7 @@ export function approveTools(discovered: DiscoveredTool[], policy: Policy = defa
       description: tool.description?.trim() ?? '',
       inputSchema: normaliseSchema(tool.inputSchema),
       mutating: looksMutating(tool),
+      ...(tool.annotations ? { annotations: tool.annotations } : {}),
     });
   }
 
