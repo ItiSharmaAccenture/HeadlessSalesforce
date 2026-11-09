@@ -214,11 +214,29 @@ the authorize request and the Salesforce callback can land on different
 instances, so the PKCE state has to be somewhere both can see.
 
 Provision Redis from the **Vercel Marketplace** (Storage → Upstash; `@vercel/kv`
-itself is deprecated). The integration sets `UPSTASH_REDIS_REST_URL` and
-`UPSTASH_REDIS_REST_TOKEN`, and the app switches backend as soon as it sees
-them — no code change and no `TOKEN_STORE` needed. Confirm with
+itself is deprecated). The app switches backend as soon as it sees the
+credentials — no code change and no `TOKEN_STORE` needed. Confirm with
 `/api/health`, which reports `checks.salesforceOAuth.storage` as `file` or
 `redis`.
+
+The integration lets you set an **environment variable prefix**, which is
+prepended to the standard names, so a provisioned instance can arrive as
+`MYAPP_KV_REST_API_URL` rather than `KV_REST_API_URL`. Any prefix is handled:
+exact names are tried first, then a suffix match where both halves share a
+prefix, so two provisioned instances cannot be spliced together.
+
+Of the five variables Upstash typically creates, only two are usable, and the
+app deliberately ignores the rest:
+
+| Variable | Used |
+|---|---|
+| `…KV_REST_API_URL` | yes — the HTTPS REST endpoint |
+| `…KV_REST_API_TOKEN` | yes — read/write |
+| `…KV_REST_API_READ_ONLY_TOKEN` | no — cannot write the token record |
+| `…REDIS_URL`, `…KV_URL` | no — `rediss://` TCP strings the REST client cannot use |
+
+Pointing the app at a `rediss://` URL is reported at startup with an
+explanation, rather than failing on the first Redis call.
 
 **2. Environment variables.** Set the same values as `.env.local`, with two
 changes:
@@ -361,7 +379,7 @@ the read tools only.
 ## Tests
 
 ```bash
-npm test        # 265 tests
+npm test        # 280 tests
 npm run lint
 npm run build
 ```
@@ -395,6 +413,7 @@ one-shot PKCE state on Redis.
 | Gemini "could not find the model" | Set `GEMINI_MODEL` to a model your key can access. |
 | Setup route returns `403` | Not reached from localhost. Intentionally local-only; set `ALLOW_REMOTE_SETUP=true` to authorize from a deployed host. |
 | Deployed app loses its authorization after a while | It is on the file backend. `/api/health` reports `checks.salesforceOAuth.storage`; it must be `redis` on Vercel. |
+| Redis provisioned but `/api/health` still says `storage: file` | Only the read-only token is present, or the two halves carry different prefixes. The app needs a `…KV_REST_API_URL` and a matching `…KV_REST_API_TOKEN` sharing one prefix. |
 | "state did not match a pending authorization request" on Vercel | The authorize request and the callback hit different instances. Only the Redis backend shares the PKCE state between them. |
 | Setup route returns `503` | `SETUP_SECRET` is not set. |
 

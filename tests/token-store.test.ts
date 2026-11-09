@@ -184,3 +184,78 @@ describe('pending authorization, on Redis', () => {
     expect(ops).toEqual(['get', 'del']);
   });
 });
+
+/**
+ * The Vercel Marketplace integration offers an environment-variable prefix, so
+ * a provisioned Upstash instance can arrive as `<PREFIX>_KV_REST_API_URL`
+ * rather than the plain name. The set below is what Vercel actually created for
+ * a prefix of "UPSTASH_REDIS_REST".
+ */
+const VERCEL_PREFIXED = {
+  UPSTASH_REDIS_REST_KV_REST_API_URL: 'https://prefixed.upstash.io',
+  UPSTASH_REDIS_REST_KV_REST_API_TOKEN: 'read-write-token',
+  UPSTASH_REDIS_REST_KV_REST_API_READ_ONLY_TOKEN: 'read-only-token',
+  UPSTASH_REDIS_REST_REDIS_URL: 'rediss://default:read-write-token@prefixed.upstash.io:6379',
+  UPSTASH_REDIS_REST_KV_URL: 'rediss://default:read-write-token@prefixed.upstash.io:6379',
+};
+
+describe('credentials created by the Vercel integration', () => {
+  it('finds a prefixed Upstash set and uses Redis', async () => {
+    const store = await loadStore(VERCEL_PREFIXED);
+    expect(store.tokenStoreDescription().kind).toBe('redis');
+  });
+
+  it('reads and writes with that set', async () => {
+    const store = await loadStore(VERCEL_PREFIXED);
+
+    await store.writeTokens(tokens);
+    await expect(store.readTokens()).resolves.toMatchObject({ accessToken: 'access-value' });
+  });
+
+  it('picks the HTTPS endpoint, not the rediss:// connection string', async () => {
+    const store = await loadStore(VERCEL_PREFIXED);
+    expect(store.tokenStoreDescription().location).toContain('prefixed.upstash.io');
+  });
+
+  it('never settles for the read-only token, which could not write', async () => {
+    // Only the read-only token is present, so there is no usable pair.
+    const store = await loadStore({
+      UPSTASH_REDIS_REST_KV_REST_API_URL: 'https://prefixed.upstash.io',
+      UPSTASH_REDIS_REST_KV_REST_API_READ_ONLY_TOKEN: 'read-only-token',
+    });
+
+    expect(store.tokenStoreDescription().kind).toBe('file');
+  });
+
+  it('refuses a rediss:// URL with an explanation instead of failing on first use', async () => {
+    const store = await loadStore({
+      TOKEN_STORE: 'redis',
+      KV_REST_API_URL: 'rediss://default:secret@example.upstash.io:6379',
+      KV_REST_API_TOKEN: 'token',
+    });
+
+    expect(() => store.tokenStoreDescription()).toThrow(/TCP connection string/);
+    // The password inside the URL must not be echoed back.
+    expect(() => store.tokenStoreDescription()).toThrow(/\/\/\*\*\*@/);
+  });
+
+  it('does not mix two provisioned instances together', async () => {
+    const store = await loadStore({
+      ALPHA_KV_REST_API_URL: 'https://alpha.upstash.io',
+      BETA_KV_REST_API_TOKEN: 'beta-token',
+    });
+
+    // Neither prefix has both halves, so there is nothing usable.
+    expect(store.tokenStoreDescription().kind).toBe('file');
+  });
+
+  it('still prefers an exact name when both are present', async () => {
+    const store = await loadStore({
+      ...VERCEL_PREFIXED,
+      KV_REST_API_URL: 'https://exact.upstash.io',
+      KV_REST_API_TOKEN: 'exact-token',
+    });
+
+    expect(store.tokenStoreDescription().location).toContain('exact.upstash.io');
+  });
+});

@@ -22,7 +22,7 @@ import 'server-only';
 import { log } from './logger';
 import { safeCompare } from './pkce';
 import { fileBackend } from './token-stores/file';
-import { redisBackend, redisCredentials } from './token-stores/redis';
+import { describeUnusableUrl, redisBackend, redisCredentials } from './token-stores/redis';
 import { PENDING_TTL_MS, type PendingAuth, type StoredTokens, type TokenBackend } from './token-stores/types';
 
 export type { PendingAuth, StoredTokens } from './token-stores/types';
@@ -36,10 +36,16 @@ function select(): TokenBackend {
   if (requested === 'redis' || (!requested && credentials)) {
     if (!credentials) {
       throw new TokenStoreConfigError(
-        'TOKEN_STORE=redis but no Redis credentials are set. Provide UPSTASH_REDIS_REST_URL and ' +
-          'UPSTASH_REDIS_REST_TOKEN (or the KV_REST_API_* equivalents).',
+        'TOKEN_STORE=redis but no Redis credentials were found. Provide KV_REST_API_URL and ' +
+          'KV_REST_API_TOKEN, or UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN. A prefix added ' +
+          'by the Vercel integration is fine; a read-only token is not.',
       );
     }
+
+    // A rediss:// URL would otherwise fail on the first call with a fetch error.
+    const unusable = describeUnusableUrl(credentials.url);
+    if (unusable) throw new TokenStoreConfigError(unusable);
+
     log.info('token-store', 'Using Redis token storage', { host: new URL(credentials.url).host });
     return redisBackend(credentials);
   }
