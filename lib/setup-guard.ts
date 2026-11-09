@@ -48,8 +48,14 @@ function isLoopbackAddress(value: string): boolean {
  * Next's dev server populates the `x-forwarded-*` headers itself, so their mere
  * presence proves nothing. What matters is that every address they carry is a
  * loopback address: a request relayed from another machine will not be.
+ *
+ * ALLOW_REMOTE_SETUP lifts this, for completing the authorization on a deployed
+ * host where there is no localhost to reach. The authorize route still requires
+ * SETUP_SECRET; the callback still depends on the one-shot `state` it issued.
  */
 export function requireLocalhost(request: Request): GuardFailure | null {
+  if (config.setup.allowRemote) return null;
+
   const host = hostname(request.headers.get('host') ?? '');
 
   if (!LOCAL_HOSTS.has(host)) {

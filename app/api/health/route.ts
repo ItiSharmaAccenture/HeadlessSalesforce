@@ -9,6 +9,7 @@
 import { config } from '@/lib/config';
 import { log } from '@/lib/logger';
 import { getAuthorizationStatus } from '@/lib/salesforce-auth';
+import { tokenStoreDescription } from '@/lib/token-store';
 import { openMcpSession, type ServerStatus } from '@/lib/salesforce-mcp';
 import type { HealthResponse } from '@/types/chat';
 
@@ -76,7 +77,33 @@ export async function GET(): Promise<Response> {
   const geminiConfigured = Boolean(config.gemini.apiKey);
   const mcpConfigured = Boolean(config.salesforce.mcpServers.length > 0 && config.salesforce.clientId);
 
-  const auth = await getAuthorizationStatus();
+  // Reported because a serverless deployment on the file backend looks fine
+  // until the first cold start loses the tokens.
+  let storage: 'file' | 'redis' | undefined;
+  let storageDetail = '';
+  try {
+    const described = tokenStoreDescription();
+    storage = described.kind;
+    if (described.kind === 'file') storageDetail = ' Tokens are in a local file, which a serverless host will not keep.';
+  } catch (error) {
+    storageDetail = ` Token storage is misconfigured: ${error instanceof Error ? error.message : String(error)}`;
+  }
+
+  /**
+   * Reading the tokens can itself fail — unreachable Redis, wrong credentials —
+   * and this endpoint exists to report that, so it must not propagate. A
+   * storage failure is reported as unauthorized with the reason attached,
+   * rather than as a 500 with no body.
+   */
+  let auth: Awaited<ReturnType<typeof getAuthorizationStatus>>;
+  try {
+    auth = await getAuthorizationStatus();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.warn('health', 'Could not read the token store', { message });
+    auth = { authorized: false, hasRefreshToken: false, expiresAt: null, scope: null };
+    storageDetail = ` Token storage could not be read (${storage ?? 'unknown'} backend): ${message}`;
+  }
 
   // Probing only makes sense once there is a token to probe with.
   const mcp: Probe =
@@ -100,11 +127,13 @@ export async function GET(): Promise<Response> {
       },
       salesforceOAuth: {
         authorized: auth.authorized,
-        detail: auth.authorized
-          ? `Authorized${auth.hasRefreshToken ? ' with a refresh token' : ' without a refresh token (it will expire)'}.`
-          : config.salesforce.clientId
-            ? 'Not authorized yet. Run the one-time setup at /api/auth/salesforce?secret=...'
-            : 'SALESFORCE_CLIENT_ID is not set in .env.local.',
+        detail:
+          (auth.authorized
+            ? `Authorized${auth.hasRefreshToken ? ' with a refresh token' : ' without a refresh token (it will expire)'}.`
+            : config.salesforce.clientId
+              ? 'Not authorized yet. Run the one-time setup at /api/auth/salesforce?secret=...'
+              : 'SALESFORCE_CLIENT_ID is not set in .env.local.') + storageDetail,
+        ...(storage ? { storage } : {}),
       },
       salesforceMcp: {
         configured: mcpConfigured,

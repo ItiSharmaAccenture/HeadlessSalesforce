@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { guardSetupRoute, requireLocalhost, requireSetupSecret } from '@/lib/setup-guard';
 
@@ -102,5 +102,44 @@ describe('guardSetupRoute', () => {
     });
 
     expect(guardSetupRoute(request, { requireSecret: false })?.status).toBe(403);
+  });
+});
+
+describe('ALLOW_REMOTE_SETUP', () => {
+  it('still refuses a remote host by default', async () => {
+    vi.resetModules();
+    const guard = await import('@/lib/setup-guard');
+
+    expect(guard.requireLocalhost(makeRequest({ host: 'my-app.vercel.app' }))?.status).toBe(403);
+  });
+
+  it('permits a deployed host when the operator opts in', async () => {
+    vi.resetModules();
+    vi.stubEnv('ALLOW_REMOTE_SETUP', 'true');
+    const guard = await import('@/lib/setup-guard');
+
+    expect(guard.requireLocalhost(makeRequest({ host: 'my-app.vercel.app' }))).toBeNull();
+    vi.unstubAllEnvs();
+  });
+
+  it('keeps requiring the secret on the authorize route when opted in', async () => {
+    vi.resetModules();
+    vi.stubEnv('ALLOW_REMOTE_SETUP', 'true');
+    const guard = await import('@/lib/setup-guard');
+
+    const request = new Request('https://my-app.vercel.app/api/auth/salesforce', {
+      headers: { host: 'my-app.vercel.app' },
+    });
+    expect(guard.guardSetupRoute(request, { requireSecret: true })?.status).toBe(401);
+    vi.unstubAllEnvs();
+  });
+
+  it('is off unless the value is exactly "true"', async () => {
+    vi.resetModules();
+    vi.stubEnv('ALLOW_REMOTE_SETUP', '1');
+    const guard = await import('@/lib/setup-guard');
+
+    expect(guard.requireLocalhost(makeRequest({ host: 'my-app.vercel.app' }))?.status).toBe(403);
+    vi.unstubAllEnvs();
   });
 });

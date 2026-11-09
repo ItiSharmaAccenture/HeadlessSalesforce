@@ -85,7 +85,12 @@ export interface HealthResponse {
   status: 'connected' | 'configuration_required' | 'connection_failed';
   checks: {
     gemini: { configured: boolean; model: string | null; detail: string };
-    salesforceOAuth: { authorized: boolean; detail: string };
+    salesforceOAuth: {
+      authorized: boolean;
+      detail: string;
+      /** Which backend holds the tokens, so a deployment can be checked at a glance. */
+      storage?: 'file' | 'redis';
+    };
     salesforceMcp: {
       configured: boolean;
       reachable: boolean;

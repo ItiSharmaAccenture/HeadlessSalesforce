@@ -136,6 +136,7 @@ Fill in `.env.local` (git-ignored). The required values:
 | `SALESFORCE_LOGIN_URL` | `https://login.salesforce.com`, `https://test.salesforce.com` for sandboxes, or your My Domain URL. |
 | `SALESFORCE_REDIRECT_URI` | Must match the app's callback URL exactly. |
 | `SALESFORCE_MCP_URLS` | Comma-separated endpoint list. See the table below. `SALESFORCE_MCP_URL` still works for a single endpoint. |
+| `TOKEN_STORE` | `file` locally, `redis` on a serverless host. Detected automatically from the Redis credentials. |
 | `SETUP_SECRET` | Gates the OAuth setup route. Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. |
 
 ### MCP endpoints
@@ -193,6 +194,59 @@ discovery have succeeded. Then open:
 ```
 http://localhost:3000
 ```
+
+### Deploying to Vercel
+
+The same build runs locally and on Vercel; what changes is where tokens live.
+
+> **Read this first.** The chat has no authentication, and with the default
+> policy every tool the MCP servers expose — including create, update and delete
+> — is reachable, as are the status buttons on `/my-day`. On a public URL anyone
+> who finds it can read and modify your CRM. Turn on **Vercel Deployment
+> Protection** (Project → Settings → Deployment Protection → Vercel
+> Authentication, or a password) *before* the first deploy. Nothing in the code
+> enforces this.
+
+**1. Token storage.** The file backend cannot work on Vercel: the filesystem is
+read-only, and the one writable path (`/tmp`) is per-instance and cleared on a
+cold start. That would strand the tokens *and* an in-flight authorization —
+the authorize request and the Salesforce callback can land on different
+instances, so the PKCE state has to be somewhere both can see.
+
+Provision Redis from the **Vercel Marketplace** (Storage → Upstash; `@vercel/kv`
+itself is deprecated). The integration sets `UPSTASH_REDIS_REST_URL` and
+`UPSTASH_REDIS_REST_TOKEN`, and the app switches backend as soon as it sees
+them — no code change and no `TOKEN_STORE` needed. Confirm with
+`/api/health`, which reports `checks.salesforceOAuth.storage` as `file` or
+`redis`.
+
+**2. Environment variables.** Set the same values as `.env.local`, with two
+changes:
+
+| Variable | Value on Vercel |
+|---|---|
+| `SALESFORCE_REDIRECT_URI` | `https://<your-app>.vercel.app/api/auth/callback/salesforce` |
+| `ALLOW_REMOTE_SETUP` | `true`, only if you intend to authorize from the deployed app |
+
+Add the production callback URL to the External Client App as well, alongside
+the localhost one — Salesforce matches it exactly.
+
+**3. Authorize once.** Two ways, both ending with the tokens in Redis:
+
+- *From the deployed app* — set `ALLOW_REMOTE_SETUP=true` and visit
+  `https://<your-app>.vercel.app/api/auth/salesforce?secret=<SETUP_SECRET>`.
+  The setup routes are otherwise localhost-only, so this is opt-in.
+- *From your machine* — put the Upstash variables in `.env.local` too and run
+  the authorization locally. It writes to the same Redis the deployment reads,
+  and the localhost restriction stays in force. Remember the redirect URI must
+  match whichever host you start the flow from.
+
+**4. Function duration.** Nothing to configure: Vercel Functions now default to
+300s on Hobby and Pro, and a chat turn here takes around ten seconds.
+
+Still true of a deployment, and unchanged by any of the above: rate limiting is
+per-instance in memory, and the token store is unencrypted either way. See
+[Known limitations](#known-limitations).
 
 ### Production build
 
@@ -307,7 +361,7 @@ the read tools only.
 ## Tests
 
 ```bash
-npm test        # 232 tests
+npm test        # 265 tests
 npm run lint
 npm run build
 ```
@@ -318,7 +372,8 @@ routing and name collisions, partial endpoint failure, MCP response parsing, SSE
 framing and parsing, PKCE and OAuth state handling, setup-route access control,
 the Gemini tool-calling loop with both Salesforce and Gemini mocked, Copilot
 capability resolution from schemas, the capability overrides, the sign-in cookie,
-and per-technician isolation.
+per-technician isolation, and token-store backend selection including the
+one-shot PKCE state on Redis.
 
 ---
 
@@ -338,7 +393,9 @@ and per-technician isolation.
 | "Connected, but no tools were returned" | The MCP server is activated but the dedicated user has no permission to use it. |
 | Gemini "rate limit reached" | Free-tier quota. Wait, or set `GEMINI_MODEL` to a model with more quota. |
 | Gemini "could not find the model" | Set `GEMINI_MODEL` to a model your key can access. |
-| Setup route returns `403` | Not reached from localhost. The route is intentionally local-only. |
+| Setup route returns `403` | Not reached from localhost. Intentionally local-only; set `ALLOW_REMOTE_SETUP=true` to authorize from a deployed host. |
+| Deployed app loses its authorization after a while | It is on the file backend. `/api/health` reports `checks.salesforceOAuth.storage`; it must be `redis` on Vercel. |
+| "state did not match a pending authorization request" on Vercel | The authorize request and the callback hit different instances. Only the Redis backend shares the PKCE state between them. |
 | Setup route returns `503` | `SETUP_SECRET` is not set. |
 
 Server logs carry diagnostics with tokens, codes, secrets and keys redacted.
@@ -354,8 +411,9 @@ This is a POC and is **not** production-ready.
   and deletes included — is reachable from it. The dedicated Salesforce user's
   permissions are the only thing limiting what the demo can do. Do not deploy
   this to a publicly reachable environment with real CRM data.
-- **Single-process token store.** Tokens live in an unencrypted local JSON file.
-  A real deployment needs a secret manager.
+- **Unencrypted token store.** Neither backend encrypts anything: the file
+  backend is a plain JSON file, and the Redis backend stores plain JSON in
+  Upstash. A real deployment needs a secret manager.
 - **Process-local rate limiting.** Counters are in memory and reset on restart.
 - **No persistence.** Chat history lives in the browser tab only.
 - **Anonymous users.** "My opportunities" cannot be resolved to a person; the

@@ -108,6 +108,12 @@ export const config = {
 
   setup: {
     secret: optional('SETUP_SECRET'),
+    /**
+     * Lets the one-time authorization run on a deployed host instead of
+     * localhost. Off by default: the setup routes are an operator tool, and on
+     * a public URL the authorize route is protected only by SETUP_SECRET.
+     */
+    allowRemote: optional('ALLOW_REMOTE_SETUP') === 'true',
   },
 
   /** Guardrails. These are safety limits, not tuning knobs. */
