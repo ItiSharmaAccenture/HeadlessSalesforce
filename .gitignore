@@ -49,3 +49,6 @@ next-env.d.ts
 *.tokens.json
 salesforce-tokens.json
 salesforce-oauth-pending.json
+
+# Copied from node_modules by scripts/copy-maplibre-worker.mjs
+/public/vendor/maplibre/

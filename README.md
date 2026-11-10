@@ -377,13 +377,15 @@ Copilot still looks the schedule up by name, as before). The **dashboard** is
 scoped to a ServiceResource id that the server assigns only when:
 
 - `ADT_DEMO_MODE=true`, and
-- the technician ID is in `ADT_TECHNICIAN_DIRECTORY`, and
-- the access code entered at sign-in matches that entry.
+- the technician ID is in `ADT_TECHNICIAN_DIRECTORY`.
+
+There is no password or access code, so anyone who signs in with a mapped
+technician ID sees that technician's appointments. That is acceptable for a
+controlled POC only.
 
 The mapping is written into an httpOnly cookie **HMAC-signed** with
 `SESSION_SECRET` (or `SETUP_SECRET`), so it cannot be edited to claim another
-technician. This is a clearly labelled demo mode ("Demo mode" badge in the
-header), not production authentication. A sign-in without a mapping still gets
+technician. It is not production authentication. A sign-in without a mapping still gets
 the Copilot, and the dashboard explains why it has no appointments.
 
 Appointments are remembered per technician so a job stays reachable after it

@@ -21,13 +21,15 @@ function appt(id: string, start: string, end: string, coords: [number, number] |
 afterEach(() => {
   vi.unstubAllGlobals();
   delete process.env.MAPBOX_ACCESS_TOKEN;
+  delete process.env.ADT_ROUTING_PROVIDER;
 });
 
 describe('buildRoute', () => {
   const a = appt('08p000000000001', '2026-11-10T15:00:00Z', '2026-11-10T16:00:00Z', [-97.74, 30.27]);
   const b = appt('08p000000000002', '2026-11-10T16:10:00Z', '2026-11-10T17:00:00Z', [-97.68, 30.51]);
 
-  it('reports a missing provider instead of estimating a distance', async () => {
+  it('reports a disabled provider instead of estimating a distance', async () => {
+    process.env.ADT_ROUTING_PROVIDER = 'none';
     const result = await buildRoute([a, b]);
     expect(result.status).toBe('unavailable');
     expect(result.status === 'unavailable' && result.code).toBe('provider_not_configured');
@@ -54,7 +56,18 @@ describe('buildRoute', () => {
     expect(String(fetchMock.mock.calls[0][0])).toContain('-97.740000,30.270000;-97.680000,30.510000');
   });
 
+  it('falls back to OSRM without a Mapbox token', async () => {
+    const fetchMock = vi.fn<(url: string | URL) => Promise<Response>>(async () =>
+      Response.json({ code: 'Ok', routes: [{ distance: 1000, duration: 120, geometry: { coordinates: [] }, legs: [{ distance: 1000, duration: 120 }] }] }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await buildRoute([a, b]);
+    expect(result.status === 'ok' && result.provider).toBe('osrm');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('router.project-osrm.org/route/v1/driving/');
+  });
+
   it('skips canceled appointments and reports them', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ code: 'NoRoute' }, { status: 422 })));
     const result = await buildRoute([a, appt('08p000000000003', '2026-11-10T18:00:00Z', '2026-11-10T19:00:00Z', [-97.7, 30.3], 'Canceled')]);
     expect(result.skipped).toEqual([{ appointmentId: '08p000000000003', appointmentNumber: 'SA-003', reason: 'Canceled' }]);
   });

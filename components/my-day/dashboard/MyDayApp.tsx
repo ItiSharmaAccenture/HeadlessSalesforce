@@ -82,12 +82,11 @@ function viewQuery(view: DashboardView, date: string | null): string {
 
 interface MyDayAppProps {
   technician: Technician;
-  demoMode: boolean;
   mapToken: string | null;
   fontClassName: string;
 }
 
-export default function MyDayApp({ technician, demoMode, mapToken, fontClassName }: MyDayAppProps) {
+export default function MyDayApp({ technician, mapToken, fontClassName }: MyDayAppProps) {
   const router = useRouter();
 
   const [view, setView] = useState<DashboardView>('today');
@@ -221,7 +220,7 @@ export default function MyDayApp({ technician, demoMode, mapToken, fontClassName
   const connection: Connection = useMemo(() => {
     if (today.loading && !today.data) return { state: 'checking', detail: 'Loading your appointments from Salesforce…' };
     if (today.error) return { state: 'error', detail: today.error };
-    if (today.data?.status === 'ok') return { state: 'connected', detail: `Appointments loaded via ${today.data.source === 'named_query' ? 'Named Query API' : 'REST Query API'}.` };
+    if (today.data?.status === 'ok') return { state: 'connected', detail: `Appointments loaded via ${today.data.source === 'named_query' ? 'Named Query API' : today.data.source === 'owner_query' ? 'REST Query API (by owner)' : 'REST Query API'}.` };
     if (today.data?.status === 'unavailable') {
       const setup = ['missing_api_scope', 'not_mapped', 'named_query_unavailable', 'not_authorized'].includes(today.data.code);
       return { state: setup ? 'setup' : 'error', detail: today.data.message };
@@ -264,7 +263,7 @@ export default function MyDayApp({ technician, demoMode, mapToken, fontClassName
     }
   };
 
-  const firstName = (profile?.status === 'ok' && profile.name ? profile.name : technician.fullName).split(/\s+/)[0];
+  const firstName = (profile?.status === 'ok' ? (profile.userName ?? profile.name ?? technician.fullName) : technician.fullName).split(/\s+/)[0];
   const localToday = todayOk?.date ?? null;
 
   return (
@@ -279,7 +278,7 @@ export default function MyDayApp({ technician, demoMode, mapToken, fontClassName
       />
 
       <div className="adt-main">
-        <Header technician={technician} connection={connection} profile={profile} demoMode={demoMode} onOpenMobileNav={() => setMobileNav(true)} />
+        <Header technician={technician} connection={connection} profile={profile} onOpenMobileNav={() => setMobileNav(true)} />
 
         <main className="adt-content">
           <section className="adt-banner" aria-labelledby="adt-greeting">

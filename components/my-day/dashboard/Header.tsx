@@ -27,11 +27,10 @@ interface HeaderProps {
   technician: Technician;
   connection: Connection;
   profile: TechnicianProfileResult | null;
-  demoMode: boolean;
   onOpenMobileNav: () => void;
 }
 
-export default function Header({ technician, connection, profile, demoMode, onOpenMobileNav }: HeaderProps) {
+export default function Header({ technician, connection, profile, onOpenMobileNav }: HeaderProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -74,7 +73,7 @@ export default function Header({ technician, connection, profile, demoMode, onOp
   };
 
   const ok = profile?.status === 'ok' ? profile : null;
-  const displayName = ok?.name ?? technician.fullName;
+  const displayName = ok?.userName ?? ok?.name ?? technician.fullName;
 
   return (
     <header className="adt-header">
@@ -82,11 +81,6 @@ export default function Header({ technician, connection, profile, demoMode, onOp
         <Menu size={22} />
       </button>
       <h1 className="adt-header-title">My Day</h1>
-      {demoMode ? (
-        <span className="adt-demo-badge" title="Technician-to-Service Resource mapping comes from a server-side demo directory">
-          Demo mode
-        </span>
-      ) : null}
 
       <div className="adt-header-right">
         <div className={`adt-conn adt-conn--${connection.state}`} role="status" title={connection.detail}>

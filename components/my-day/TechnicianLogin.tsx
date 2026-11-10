@@ -18,11 +18,10 @@ import Image from 'next/image';
 
 import type { CopilotErrorBody } from '@/types/copilot';
 
-export default function TechnicianLogin({ fontClassName, demoMode = false }: { fontClassName?: string; demoMode?: boolean }) {
+export default function TechnicianLogin({ fontClassName }: { fontClassName?: string }) {
   const router = useRouter();
   const [name, setName] = useState('');
   const [id, setId] = useState('');
-  const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -37,7 +36,7 @@ export default function TechnicianLogin({ fontClassName, demoMode = false }: { f
       const response = await fetch('/api/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, id, ...(accessCode ? { accessCode } : {}) }),
+        body: JSON.stringify({ name, id }),
       });
 
       if (!response.ok) {
@@ -91,23 +90,6 @@ export default function TechnicianLogin({ fontClassName, demoMode = false }: { f
           required
         />
 
-        {demoMode ? (
-          <>
-            <label className="tl-label" htmlFor="tl-code">
-              Access code <span className="tl-optional">(demo mode)</span>
-            </label>
-            <input
-              id="tl-code"
-              className="tl-input"
-              type="password"
-              value={accessCode}
-              onChange={(event) => setAccessCode(event.target.value)}
-              placeholder="Required to load your Salesforce schedule"
-              autoComplete="one-time-code"
-              maxLength={120}
-            />
-          </>
-        ) : null}
 
         {error ? (
           <p className="tl-error" role="alert">

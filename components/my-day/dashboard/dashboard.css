@@ -309,17 +309,6 @@
   color: var(--navy-800);
 }
 
-.adt-demo-badge {
-  font-size: 11.5px;
-  font-weight: 700;
-  color: var(--amber);
-  background: var(--amber-50);
-  border: 1px solid #f3d7a6;
-  border-radius: 999px;
-  padding: 3px 10px;
-  white-space: nowrap;
-}
-
 .adt-header-right {
   margin-left: auto;
   display: flex;
@@ -1908,8 +1897,7 @@
 
   .adt-conn-label,
   .adt-profile-name,
-  .adt-bell,
-  .adt-demo-badge {
+  .adt-bell {
     display: none;
   }
 

@@ -78,7 +78,7 @@ export interface DashboardResponse {
   jobsTodayIsLowerBound: boolean;
   appointments: DashboardAppointment[];
   customerLookup: 'ok' | 'unavailable';
-  source: 'named_query' | 'rest_query';
+  source: 'named_query' | 'rest_query' | 'owner_query';
   fetchedAt: string;
 }
 
@@ -88,6 +88,9 @@ export interface TechnicianProfile {
   status: 'ok';
   serviceResourceId: string;
   name: string | null;
+  /** The Salesforce User the resource represents (RelatedRecord). */
+  userId: string | null;
+  userName: string | null;
   isActive: boolean | null;
   resourceType: string | null;
   timezone: string | null;
@@ -122,7 +125,7 @@ export interface RouteLeg {
 
 export interface RouteResponse {
   status: 'ok';
-  provider: 'mapbox';
+  provider: 'mapbox' | 'osrm';
   unit: 'mi' | 'km';
   stops: RouteStop[];
   legs: RouteLeg[];

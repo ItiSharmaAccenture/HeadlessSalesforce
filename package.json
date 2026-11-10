@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/copy-maplibre-worker.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/copy-maplibre-worker.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -15,7 +17,7 @@
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@upstash/redis": "^1.41.0",
     "lucide-react": "^1.67.0",
-    "mapbox-gl": "^3.34.2",
+    "maplibre-gl": "^6.17.0",
     "next": "16.4.4",
     "react": "19.3.0",
     "react-dom": "19.3.0",

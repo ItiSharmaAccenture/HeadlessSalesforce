@@ -3,7 +3,6 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import MyDayApp from "@/components/my-day/dashboard/MyDayApp";
 import TechnicianLogin from "@/components/my-day/TechnicianLogin";
 import { readSession } from "@/lib/session";
-import { demoModeEnabled } from "@/lib/technician-directory";
 import "./my-day.css";
 import "@/components/my-day/dashboard/dashboard.css";
 
@@ -27,10 +26,10 @@ export const metadata: Metadata = {
 export default async function MyDayPage() {
   const session = await readSession();
 
-  if (!session) return <TechnicianLogin fontClassName={jakarta.variable} demoMode={demoModeEnabled()} />;
+  if (!session) return <TechnicianLogin fontClassName={jakarta.variable} />;
 
   // A public, URL-restrictable browser token. The server-side routing token is separate.
   const mapToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN?.trim() || null;
 
-  return <MyDayApp technician={session.technician} demoMode={demoModeEnabled()} mapToken={mapToken} fontClassName={jakarta.variable} />;
+  return <MyDayApp technician={session.technician} mapToken={mapToken} fontClassName={jakarta.variable} />;
 }

@@ -1,22 +1,21 @@
 'use client';
 
 /**
- * Interactive map of the period's stops (Mapbox GL JS).
+ * Interactive map of the period's stops (MapLibre GL JS).
  *
  * Markers are numbered in scheduled order and come only from real coordinates:
  * Salesforce Latitude/Longitude, or a server-side geocode of the service
  * address. Selecting a marker selects the appointment everywhere (timeline,
  * drawer, Copilot) and vice versa.
  *
- * Needs NEXT_PUBLIC_MAPBOX_TOKEN. Without it the map shows an unavailable
- * state instead of a fake picture.
+ * Base map: Mapbox raster tiles when NEXT_PUBLIC_MAPBOX_TOKEN is set,
+ * otherwise OpenStreetMap tiles (no key; light use only, attribution shown).
  */
 
-import 'mapbox-gl/dist/mapbox-gl.css';
+import 'maplibre-gl/dist/maplibre-gl.css';
 
-import { MapPin } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { GeoJSONSource, Map as MapboxMap, Marker, Popup } from 'mapbox-gl';
+import type { GeoJSONSource, Map as MapLibreMap, Marker, Popup, StyleSpecification } from 'maplibre-gl';
 
 import type { DashboardAppointment, RouteResult, RouteStop } from '@/types/dashboard';
 import { formatAddress, formatWindow } from './format';
@@ -34,13 +33,30 @@ interface RouteMapProps {
   large?: boolean;
 }
 
+function baseStyle(token: string | null): StyleSpecification {
+  const source = token
+    ? {
+        tiles: [`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${encodeURIComponent(token)}`],
+        attribution: '© Mapbox © OpenStreetMap contributors',
+      }
+    : {
+        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+        attribution: '© OpenStreetMap contributors',
+      };
+  return {
+    version: 8,
+    sources: { base: { type: 'raster', tileSize: 256, maxzoom: 19, ...source } },
+    layers: [{ id: 'base', type: 'raster', source: 'base' }],
+  };
+}
+
 function directionsUrl(stop: RouteStop): string {
   return `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${stop.latitude},${stop.longitude}`;
 }
 
 export default function RouteMap({ token, route, routeLoading, appointments, timezone, selectedId, onSelect, onOpenJob, large }: RouteMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<MapboxMap | null>(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<Map<string, { marker: Marker; element: HTMLElement }>>(new Map());
   const popupRef = useRef<Popup | null>(null);
   const handlers = useRef({ onSelect, onOpenJob });
@@ -55,29 +71,29 @@ export default function RouteMap({ token, route, routeLoading, appointments, tim
 
   // Create the map once.
   useEffect(() => {
-    if (!token || !containerRef.current) return;
+    if (!containerRef.current) return;
     let cancelled = false;
-    let map: MapboxMap | null = null;
+    let map: MapLibreMap | null = null;
     const markers = markersRef.current;
-    void import('mapbox-gl')
-      .then(({ default: mapboxgl }) => {
+    void import('maplibre-gl')
+      .then((ml) => {
         if (cancelled || !containerRef.current) return;
-        mapboxgl.accessToken = token;
-        map = new mapboxgl.Map({
+        // Served from public/ (see scripts/copy-maplibre-worker.mjs); the bundler cannot resolve it.
+        ml.setWorkerUrl('/vendor/maplibre/maplibre-gl-worker.mjs');
+        map = new ml.Map({
           container: containerRef.current,
-          style: 'mapbox://styles/mapbox/light-v11',
+          style: baseStyle(token),
           center: [-98.5, 39.8],
           zoom: 3,
-          attributionControl: true,
           cooperativeGestures: !large,
         });
-        map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
+        map.addControl(new ml.NavigationControl({ showCompass: false }), 'top-right');
         map.on('load', () => {
           if (!cancelled) setLoaded(true);
         });
         map.on('error', (event) => {
           const message = (event?.error as Error | undefined)?.message ?? '';
-          if (/access token|401|403/i.test(message)) setMapError('The map provider rejected the configured token.');
+          if (/401|403/i.test(message)) setMapError('The map provider rejected the request.');
         });
         mapRef.current = map;
       })
@@ -99,7 +115,7 @@ export default function RouteMap({ token, route, routeLoading, appointments, tim
     if (!map || !loaded) return;
     let cancelled = false;
 
-    void import('mapbox-gl').then(({ default: mapboxgl }) => {
+    void import('maplibre-gl').then((mapboxgl) => {
       if (cancelled) return;
       markersRef.current.forEach(({ marker }) => marker.remove());
       markersRef.current.clear();
@@ -159,7 +175,7 @@ export default function RouteMap({ token, route, routeLoading, appointments, tim
     if (!stop) return;
 
     let cancelled = false;
-    void import('mapbox-gl').then(({ default: mapboxgl }) => {
+    void import('maplibre-gl').then((mapboxgl) => {
       if (cancelled) return;
       const content = document.createElement('div');
       content.className = 'adt-popup';
@@ -202,15 +218,6 @@ export default function RouteMap({ token, route, routeLoading, appointments, tim
     };
   }, [selectedId, loaded, stops, appointments, timezone]);
 
-  if (!token) {
-    return (
-      <div className={`adt-map adt-map--empty${large ? ' adt-map--large' : ''}`} role="status">
-        <MapPin size={28} aria-hidden="true" />
-        <p className="adt-map-empty-title">Map unavailable</p>
-        <p>No map provider is configured. Set NEXT_PUBLIC_MAPBOX_TOKEN to show appointment locations.</p>
-      </div>
-    );
-  }
 
   return (
     <div className={`adt-map${large ? ' adt-map--large' : ''}`}>

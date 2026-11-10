@@ -18,6 +18,4 @@ export interface Technician {
 export interface SignInRequest {
   name: string;
   id: string;
-  /** Demo-mode access code; required for technician ids in the server-side directory. */
-  accessCode?: string;
 }

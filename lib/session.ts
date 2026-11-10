@@ -3,9 +3,8 @@
  *
  * The name and technician id are still self-declared (the Copilot looks up the
  * schedule by name, as before). What is new is the ServiceResource id that
- * scopes the dashboard: it is set by the server only after the technician's
- * access code matched the server-side directory (lib/technician-directory.ts),
- * and the cookie is HMAC-signed so it cannot be edited to claim another
+ * scopes the dashboard: it is set by the server from the server-side directory
+ * (lib/technician-directory.ts), and the cookie is HMAC-signed so it cannot be edited to claim another
  * technician's ServiceResource.
  *
  * Signing key: SESSION_SECRET, falling back to SETUP_SECRET. Without either,

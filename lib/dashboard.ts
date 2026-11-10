@@ -18,6 +18,7 @@ import {
   runTechnicianAppointmentsViaQuery,
   type NamedQueryResult,
 } from './named-query';
+import { countOwnerAppointments, isOwnedBy, runOwnerAppointments, type AppointmentOwner } from './owner-query';
 import { describeFields, isSalesforceId, pickFields, SalesforceRestError, soql, soqlString } from './salesforce-rest';
 import { isValidDate, isValidTimeZone, localDate, rangeFor, startOfWeek } from './time-range';
 import type {
@@ -94,7 +95,7 @@ export const NOT_MAPPED: Unavailable = {
   code: 'not_mapped',
   message: 'Your sign-in is not linked to a Salesforce Service Resource, so no appointments can be shown.',
   adminHint:
-    'Demo mode: set ADT_DEMO_MODE=true and add this technician to ADT_TECHNICIAN_DIRECTORY with their ServiceResource Id and an access code, then sign in again with the code.',
+    'Set ADT_DEMO_MODE=true and add this technician ID to ADT_TECHNICIAN_DIRECTORY with their ServiceResource Id, then sign in again.',
 };
 
 /* ------------------------------------------------------------------ */
@@ -117,7 +118,8 @@ function cached<T>(store: Map<string, CacheEntry<T>>, key: string, ttl: number, 
   return value;
 }
 
-const appointmentCache = new Map<string, CacheEntry<NamedQueryResult & { source: 'named_query' | 'rest_query' }>>();
+type Source = 'named_query' | 'rest_query' | 'owner_query';
+const appointmentCache = new Map<string, CacheEntry<NamedQueryResult & { source: Source }>>();
 const profileCache = new Map<string, CacheEntry<TechnicianProfile>>();
 
 /* ------------------------------------------------------------------ */
@@ -134,7 +136,9 @@ function rel(record: Raw, path: string): unknown {
 
 async function loadProfile(serviceResourceId: string): Promise<TechnicianProfile> {
   const available = await describeFields('ServiceResource');
-  const fields = pickFields(available, ['Id', 'Name', 'IsActive', 'ResourceType', 'RelatedRecordId', 'RelatedRecord.TimeZoneSidKey', 'LocationId']);
+  const fields = pickFields(available, [
+    'Id', 'Name', 'IsActive', 'ResourceType', 'RelatedRecordId', 'RelatedRecord.Name', 'RelatedRecord.TimeZoneSidKey', 'LocationId',
+  ]);
   const result = await soql<Raw>(`SELECT ${fields.join(', ')} FROM ServiceResource WHERE Id = ${soqlString(serviceResourceId)} LIMIT 1`);
   const record = result.records[0];
   if (!record) throw new SalesforceRestError(`ServiceResource ${serviceResourceId} was not found or is not visible.`, 'not_found', 404);
@@ -163,6 +167,8 @@ async function loadProfile(serviceResourceId: string): Promise<TechnicianProfile
     status: 'ok',
     serviceResourceId,
     name: str(record.Name),
+    userId: str(record.RelatedRecordId),
+    userName: str(rel(record, 'RelatedRecord.Name')),
     isActive: typeof record.IsActive === 'boolean' ? record.IsActive : null,
     resourceType: str(record.ResourceType),
     timezone: zone && isValidTimeZone(zone) ? zone : null,
@@ -191,17 +197,33 @@ export function defaultTimeZone(): string {
 /* Appointments                                                        */
 /* ------------------------------------------------------------------ */
 
-function appointmentSource(): 'named_query' | 'rest_query' {
-  return process.env.ADT_APPOINTMENT_SOURCE === 'rest_query' ? 'rest_query' : 'named_query';
+function appointmentSource(): Source {
+  const configured = process.env.ADT_APPOINTMENT_SOURCE;
+  return configured === 'rest_query' || configured === 'owner_query' ? configured : 'named_query';
+}
+
+/** The ServiceResource's related User, for the owner-based source. Resolved server-side only. */
+async function resolveOwner(serviceResourceId: string): Promise<AppointmentOwner> {
+  const profile = await getTechnicianProfile(serviceResourceId);
+  if (profile.status !== 'ok') throw new SalesforceRestError(profile.message, 'salesforce_error');
+  if (!profile.userId || !profile.userName) {
+    throw new SalesforceRestError(
+      `ServiceResource ${serviceResourceId} has no related User, so appointments cannot be matched by owner.`,
+      'not_found',
+    );
+  }
+  return { userId: profile.userId, name: profile.userName };
 }
 
 function loadAppointments(serviceResourceId: string, startUtc: string, endUtc: string, refresh: boolean) {
   const source = appointmentSource();
   return cached(appointmentCache, `${serviceResourceId}|${startUtc}|${endUtc}|${source}`, APPOINTMENT_TTL_MS, refresh, async () => {
     const result =
-      source === 'rest_query'
-        ? await runTechnicianAppointmentsViaQuery(serviceResourceId, startUtc, endUtc)
-        : await runTechnicianAppointments(serviceResourceId, startUtc, endUtc);
+      source === 'owner_query'
+        ? await runOwnerAppointments(await resolveOwner(serviceResourceId), startUtc, endUtc)
+        : source === 'rest_query'
+          ? await runTechnicianAppointmentsViaQuery(serviceResourceId, startUtc, endUtc)
+          : await runTechnicianAppointments(serviceResourceId, startUtc, endUtc);
     return { ...result, source };
   });
 }
@@ -235,7 +257,10 @@ async function countIfTruncated(
 ): Promise<{ verifiedTotal: number | null; lowerBound: boolean }> {
   if (!result.possiblyTruncated) return { verifiedTotal: null, lowerBound: false };
   try {
-    const total = await countAssignments(serviceResourceId, startUtc, endUtc);
+    const total =
+      appointmentSource() === 'owner_query'
+        ? await countOwnerAppointments(await resolveOwner(serviceResourceId), startUtc, endUtc)
+        : await countAssignments(serviceResourceId, startUtc, endUtc);
     return { verifiedTotal: total, lowerBound: false };
   } catch {
     return { verifiedTotal: null, lowerBound: true };
@@ -268,7 +293,7 @@ export async function getDashboard(serviceResourceId: string, request: Dashboard
   }
   const range = rangeFor(start, days, timezone);
 
-  let result: NamedQueryResult & { source: 'named_query' | 'rest_query' };
+  let result: NamedQueryResult & { source: Source };
   try {
     result = await loadAppointments(serviceResourceId, range.startUtc, range.endUtc, Boolean(request.refresh));
   } catch (error) {
@@ -279,7 +304,8 @@ export async function getDashboard(serviceResourceId: string, request: Dashboard
   // Copies, so enrichment never mutates the cached page.
   const appointments = result.appointments.map((appointment) => ({ ...appointment, address: { ...appointment.address } }));
   const [customerLookup, completeness, todayStats] = await Promise.all([
-    enrichCustomers(appointments),
+    // The owner query already selects Account.Name.
+    result.source === 'owner_query' ? Promise.resolve('ok' as const) : enrichCustomers(appointments),
     countIfTruncated(result, serviceResourceId, range.startUtc, range.endUtc),
     (async () => {
       if (request.view === 'today' || (request.view === 'date' && start === today)) return null;
@@ -297,7 +323,7 @@ export async function getDashboard(serviceResourceId: string, request: Dashboard
   const appointmentCount = completeness.verifiedTotal ?? appointments.length;
   return {
     status: 'ok',
-    technician: { serviceResourceId, name: profile.status === 'ok' ? profile.name : null },
+    technician: { serviceResourceId, name: profile.status === 'ok' ? (profile.userName ?? profile.name) : null },
     view: request.view,
     date: range.startDate,
     endDate: range.endDate,
@@ -336,6 +362,8 @@ export async function getAppointmentsForView(
  */
 export async function isAssignedTo(serviceResourceId: string, appointmentId: string): Promise<boolean> {
   if (!isSalesforceId(serviceResourceId) || !isSalesforceId(appointmentId, '08p')) return false;
+  // Owner-based orgs have no AssignedResource rows; ownership is the link there.
+  if (appointmentSource() === 'owner_query') return isOwnedBy(await resolveOwner(serviceResourceId), appointmentId);
   const result = await soql<Raw>(
     `SELECT Id FROM AssignedResource WHERE ServiceAppointmentId = ${soqlString(appointmentId)} ` +
       `AND ServiceResourceId = ${soqlString(serviceResourceId)} LIMIT 1`,
