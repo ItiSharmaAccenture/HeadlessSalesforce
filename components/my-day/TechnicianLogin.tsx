@@ -99,11 +99,6 @@ export default function TechnicianLogin({ fontClassName }: { fontClassName?: str
         <button className="tl-submit" type="submit" disabled={busy || !name.trim() || !id.trim()}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
-
-        <p className="tl-note">
-          Demo sign-in. Your name is used to look up appointments in Salesforce; it is not verified, and no password is
-          required.
-        </p>
       </form>
     </div>
   );
