@@ -324,13 +324,34 @@ interface Connected {
   capabilities: ToolCapabilities;
 }
 
-async function withSession<T>(work: (connected: Connected) => Promise<T>): Promise<T> {
+/**
+ * Opens a session the caller owns and must close.
+ *
+ * `withSession` covers the common case; a generator that yields between steps
+ * needs to hold one open across those yields, which a callback cannot express.
+ */
+async function openSession(): Promise<Connected & { close: () => Promise<void> }> {
   const session = await openMcpSession();
   try {
     const { approved } = await session.listTools();
-    return await work({ session, tools: approved, capabilities: resolveCapabilities(approved) });
-  } finally {
+    return {
+      session,
+      tools: approved,
+      capabilities: resolveCapabilities(approved),
+      close: () => session.close().catch(() => undefined),
+    };
+  } catch (error) {
     await session.close().catch(() => undefined);
+    throw error;
+  }
+}
+
+async function withSession<T>(work: (connected: Connected) => Promise<T>): Promise<T> {
+  const connected = await openSession();
+  try {
+    return await work(connected);
+  } finally {
+    await connected.close();
   }
 }
 
@@ -397,10 +418,30 @@ export async function updateAppointmentStatus(
   action: StatusAction,
 ): Promise<StatusUpdateResponse> {
   const number = requireNumber(rawNumber);
+  return withSession((connected) => applyStatus(connected, technician, number, action));
+}
 
-  return withSession(async (connected) => {
+/**
+ * The status change itself, against a session the caller already holds.
+ *
+ * Separate from `updateAppointmentStatus` so the chat path does not open a
+ * second connection: the MCP handshake costs one to two seconds against
+ * Salesforce, and `runStatusIntent` has already paid for one.
+ *
+ * `alreadyLoaded` says the caller has just loaded the schedule on this session,
+ * so the ownership check can read the remembered set rather than asking
+ * Salesforce for it again.
+ */
+async function applyStatus(
+  connected: Connected,
+  technician: Technician,
+  number: string,
+  action: StatusAction,
+  alreadyLoaded = false,
+): Promise<StatusUpdateResponse> {
+  {
     // Refreshes `known`, and proves the appointment belongs to this technician.
-    await loadSchedule(connected, technician);
+    if (!alreadyLoaded) await loadSchedule(connected, technician);
     const current = recall(technician, number);
     if (!current) {
       throw new CopilotError(`${number} is not one of ${technician.fullName}'s appointments.`, 404);
@@ -456,7 +497,7 @@ export async function updateAppointmentStatus(
         ? {}
         : { note: `Salesforce no longer lists ${number} as Scheduled, so the card shows the status you just set.` }),
     };
-  });
+  }
 }
 
 function requireNumber(value: string): string {
@@ -657,40 +698,52 @@ async function* runStatusIntent(
   yield { type: 'progress', label: 'Checking your schedule in Salesforce…' };
 
   const explicit = findAppointmentNumber(message);
-  const { schedule, actions, capabilities } = await withSession(async (connected) => ({
-    schedule: await loadSchedule(connected, technician),
-    actions: availableActions(connected.capabilities),
-    capabilities: connected.capabilities,
-  }));
-  yield { type: 'appointments', appointments: schedule.appointments, meta: schedule.meta };
 
-  const target = explicit
-    ? (schedule.appointments.find((appointment) => appointment.appointmentNumber === explicit) ?? recall(technician, explicit)?.appointment)
-    : nextAppointment(schedule, action === 'start');
+  // Held open across the yields below. Looking the appointment up and then
+  // changing it used to cost two handshakes, at one to two seconds each.
+  const connected = await openSession();
 
-  if (!target) {
-    yield {
-      type: 'delta',
-      text: explicit
-        ? `I couldn't find ${explicit} among your appointments.`
-        : `You have no upcoming scheduled appointments${action === 'start' ? ' to start' : ' to head to'}.`,
-    };
+  try {
+    const schedule = await loadSchedule(connected, technician);
+    const actions = availableActions(connected.capabilities);
+    yield { type: 'appointments', appointments: schedule.appointments, meta: schedule.meta };
+
+    const target = explicit
+      ? (schedule.appointments.find((appointment) => appointment.appointmentNumber === explicit) ??
+        recall(technician, explicit)?.appointment)
+      : nextAppointment(schedule, action === 'start');
+
+    if (!target) {
+      yield {
+        type: 'delta',
+        text: explicit
+          ? `I couldn't find ${explicit} among your appointments.`
+          : `You have no upcoming scheduled appointments${action === 'start' ? ' to start' : ' to head to'}.`,
+      };
+      yield { type: 'done' };
+      return;
+    }
+
+    const number = target.appointmentNumber;
+    if (!actions.includes(action)) {
+      yield {
+        type: 'delta',
+        text: `${unsupportedMessage(action, connected.capabilities)}\n\nYour ${explicit ? '' : 'next '}appointment is ${number}.`,
+      };
+      yield { type: 'done' };
+      return;
+    }
+
+    yield { type: 'progress', label: `Updating ${number} in Salesforce…` };
+    // The schedule was just loaded on this session, so the ownership check does
+    // not need to ask Salesforce for it a second time.
+    const update = await applyStatus(connected, technician, number, action, true);
+    yield { type: 'appointments', appointments: [update.appointment], meta: update.meta };
+    yield { type: 'delta', text: update.message.includes(number) ? update.message : `${number}: ${update.message}` };
     yield { type: 'done' };
-    return;
+  } finally {
+    await connected.close();
   }
-
-  const number = target.appointmentNumber;
-  if (!actions.includes(action)) {
-    yield { type: 'delta', text: `${unsupportedMessage(action, capabilities)}\n\nYour ${explicit ? '' : 'next '}appointment is ${number}.` };
-    yield { type: 'done' };
-    return;
-  }
-
-  yield { type: 'progress', label: `Updating ${number} in Salesforce…` };
-  const update = await updateAppointmentStatus(technician, number, action);
-  yield { type: 'appointments', appointments: [update.appointment], meta: update.meta };
-  yield { type: 'delta', text: update.message.includes(number) ? update.message : `${number}: ${update.message}` };
-  yield { type: 'done' };
 }
 
 export async function* runCopilotTurn(

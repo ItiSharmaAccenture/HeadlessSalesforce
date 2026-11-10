@@ -76,6 +76,29 @@ interface Connection {
   withAuthRetry: <T>(operation: (client: Client) => Promise<T>, stage: 'discover' | 'call') => Promise<T>;
 }
 
+/**
+ * Retries the handshake once on a transient failure.
+ *
+ * Connecting is the most expensive and most failure-prone step — 1.5 to 2
+ * seconds against Salesforce — and it is pure setup: nothing has been asked of
+ * the org yet, so repeating it cannot duplicate any work. Tool calls are
+ * deliberately *not* retried here, because a timed-out write may have already
+ * been applied.
+ */
+async function dialWithRetry(
+  server: McpServerConfig,
+  forceRefresh: boolean,
+): Promise<{ client: Client; close: () => Promise<void> }> {
+  try {
+    return await dial(server, forceRefresh);
+  } catch (error) {
+    if (!(error instanceof McpError) || !error.retryable) throw error;
+
+    log.warn('salesforce-mcp', 'Handshake failed; retrying once', { id: server.id, message: error.message });
+    return dial(server, forceRefresh);
+  }
+}
+
 async function dial(server: McpServerConfig, forceRefresh: boolean): Promise<{ client: Client; close: () => Promise<void> }> {
   const accessToken = await getAccessToken(forceRefresh);
   const client = new Client(CLIENT_INFO, { capabilities: {} });
@@ -112,7 +135,7 @@ async function dial(server: McpServerConfig, forceRefresh: boolean): Promise<{ c
 }
 
 async function openConnection(server: McpServerConfig): Promise<Connection> {
-  let { client, close } = await dial(server, false);
+  let { client, close } = await dialWithRetry(server, false);
   let retriedAuth = false;
 
   const withAuthRetry = async <T>(operation: (c: Client) => Promise<T>, stage: 'discover' | 'call'): Promise<T> => {
@@ -125,7 +148,7 @@ async function openConnection(server: McpServerConfig): Promise<Connection> {
       log.warn('salesforce-mcp', 'MCP rejected the access token; refreshing and reconnecting once', { id: server.id });
       await close();
 
-      const reconnected = await dial(server, true);
+      const reconnected = await dialWithRetry(server, true);
       client = reconnected.client;
       close = reconnected.close;
 
