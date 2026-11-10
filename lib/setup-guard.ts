@@ -18,6 +18,16 @@ export type GuardFailure = { status: number; message: string };
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 
 /**
+ * Says how to proceed, not just that the door is shut. An operator meeting this
+ * on a deployed app has no way to reach localhost, so the message has to name
+ * both routes out.
+ */
+const REMOTE_REFUSAL =
+  'The Salesforce setup routes are only available on localhost. To authorize from this deployment, ' +
+  'set ALLOW_REMOTE_SETUP=true in the environment and redeploy. To keep the routes local, run the ' +
+  'authorization on your own machine against the same token store instead.';
+
+/**
  * Strips the port and brackets so `[::1]:3000` and `::1` compare equal.
  *
  * A bare IPv6 address is left alone: its own colons are not a port separator,
@@ -60,7 +70,7 @@ export function requireLocalhost(request: Request): GuardFailure | null {
 
   if (!LOCAL_HOSTS.has(host)) {
     log.warn('setup-guard', 'Setup route refused for a non-local host', { host });
-    return { status: 403, message: 'The Salesforce setup routes are only available on localhost.' };
+    return { status: 403, message: REMOTE_REFUSAL };
   }
 
   const forwardedHost = request.headers.get('x-forwarded-host');
@@ -72,7 +82,7 @@ export function requireLocalhost(request: Request): GuardFailure | null {
   const forwardedFor = request.headers.get('x-forwarded-for');
   if (forwardedFor && !forwardedFor.split(',').every(isLoopbackAddress)) {
     log.warn('setup-guard', 'Setup route refused for a remote client address');
-    return { status: 403, message: 'The Salesforce setup routes are only available on localhost.' };
+    return { status: 403, message: REMOTE_REFUSAL };
   }
 
   return null;

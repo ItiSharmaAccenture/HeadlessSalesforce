@@ -143,3 +143,14 @@ describe('ALLOW_REMOTE_SETUP', () => {
     vi.unstubAllEnvs();
   });
 });
+
+describe('the refusal message', () => {
+  it('tells a deployed operator how to proceed, since they cannot reach localhost', () => {
+    const failure = requireLocalhost(makeRequest({ host: 'my-app.vercel.app' }));
+
+    expect(failure?.message).toMatch(/ALLOW_REMOTE_SETUP=true/);
+    expect(failure?.message).toMatch(/redeploy/);
+    // And the alternative that does not open the route publicly.
+    expect(failure?.message).toMatch(/run the authorization on your own machine/i);
+  });
+});
