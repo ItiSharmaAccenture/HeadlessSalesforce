@@ -81,6 +81,15 @@ export function ShrinkIcon(props: IconProps) {
   );
 }
 
+/** A fresh sheet: clears the transcript and starts over. */
+export function NewChatIcon(props: IconProps) {
+  return (
+    <Stroke {...props} width={2}>
+      <path d="M12 20h8M4 20l1.5-4.2 9-9a2.1 2.1 0 0 1 3 3l-9 9L4 20Z" />
+    </Stroke>
+  );
+}
+
 export function SendIcon(props: IconProps) {
   return (
     <Stroke {...props} width={2.1}>

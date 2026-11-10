@@ -29,7 +29,18 @@ import {
 } from '@/types/copilot';
 import { AppointmentCard, AppointmentDetail, type ActionState, type DetailState } from './AppointmentViews';
 import { formatClock } from './format';
-import { AlertIcon, ChatIcon, CloseIcon, EnlargeIcon, ExpandIcon, MinimiseIcon, RetryIcon, SendIcon, ShrinkIcon } from './icons';
+import {
+  AlertIcon,
+  ChatIcon,
+  CloseIcon,
+  EnlargeIcon,
+  ExpandIcon,
+  MinimiseIcon,
+  NewChatIcon,
+  RetryIcon,
+  SendIcon,
+  ShrinkIcon,
+} from './icons';
 import { MessageText } from './MessageText';
 import './copilot.css';
 
@@ -248,6 +259,24 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
       void loadCapabilities();
     }
   }, [loadCapabilities]);
+
+  /**
+   * Starts a fresh conversation.
+   *
+   * Clears the cards and any open detail view as well as the turns: leaving a
+   * card on screen with no message explaining it would be worse than leaving the
+   * transcript alone. Refused mid-turn, because the in-flight reply would land
+   * in the conversation it was just cleared from.
+   */
+  const clearChat = useCallback(() => {
+    if (busyRef.current) return;
+
+    setConversation({ turns: [], appointments: {} });
+    setActionStates({});
+    setDetail(null);
+    setDraft('');
+    inputRef.current?.focus();
+  }, []);
 
   const close = useCallback(() => {
     setView('closed');
@@ -558,6 +587,16 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
             </p>
           </div>
           <div className="cp-header-actions">
+            <button
+              type="button"
+              className="cp-icon-btn"
+              onClick={clearChat}
+              disabled={busy || conversation.turns.length === 0}
+              aria-label="Clear the conversation and start a new one"
+              title="New chat"
+            >
+              <NewChatIcon />
+            </button>
             <button
               type="button"
               className="cp-icon-btn"

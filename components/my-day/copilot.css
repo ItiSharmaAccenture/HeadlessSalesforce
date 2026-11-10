@@ -250,8 +250,15 @@
   transition: background-color 0.15s ease;
 }
 
-.copilot .cp-icon-btn:hover {
+.copilot .cp-icon-btn:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.14);
+}
+
+/* Nothing to clear, or a reply is still arriving. Dimmed rather than hidden, so
+   the header does not reflow as the conversation starts. */
+.cp-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .cp-icon-btn svg {
