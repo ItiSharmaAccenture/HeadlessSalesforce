@@ -326,22 +326,65 @@ SALESFORCE_TOOL_BLOCKLIST=deleteSobjectRecord,deleteRelatedRecord
 
 ## My Day technician dashboard
 
-`/my-day` is a second surface on the same backend: a technician dashboard with
-the ADT Copilot chat panel. It is driven by its own routes (`/api/copilot`,
-`/api/copilot/appointments/[number]`) and does not affect `/api/chat`.
+`/my-day` is **ADT My Day — AI Field Technician Workspace**: a route- and
+map-centric dashboard (sidebar, welcome banner, exactly two KPI tiles — *Jobs
+Today* and *Total Route* — an appointment timeline, an interactive map, a job
+workspace) with the ADT Technician Copilot docked on the right. It does not
+affect `/api/chat`.
 
-### Sign-in
+It has two independent data paths, with separate loading and error states:
 
-The dashboard asks for a name and a technician ID. **This is a demo stand-in for
-authentication, not a security boundary** — nothing is verified and there is no
-password. What matters is the name: it is what the appointment action is asked
-for, so it has to match the technician as Salesforce knows them. A name the org
-does not recognise simply yields an empty schedule, reported as such.
+```
+Dashboard:  browser → /api/dashboard* → Salesforce REST (Named Query + bounded SOQL)   no AI
+Copilot:    browser → /api/copilot    → Gemini + Salesforce MCP                        unchanged
+```
 
-The identity is stored in an httpOnly cookie set by `POST /api/session` and read
-server-side on every request. The browser never sends it in a chat payload, and
-page scripts cannot read it. The technician ID is shown on the dashboard and is
-never sent to Salesforce. Sign out from the profile button in the header.
+| Route | Returns |
+|---|---|
+| `GET /api/dashboard?view=today\|week\|date&date=YYYY-MM-DD` | Appointments from the `ADTTechnicianAppointments` Named Query, deduplicated, with customer names from a separate query |
+| `GET /api/dashboard/technician` | ServiceResource profile (name, territory, skills, time zone); missing fields are null |
+| `GET /api/dashboard/route?view=…` | Driving route in scheduled order from Mapbox Directions, per-leg distance/time, warnings |
+| `GET /api/appointments/[id]` | Job workspace: overview, customer, work order, line items, required parts, van stock |
+
+All four are read-only GETs. Each resolves the ServiceResource from the signed
+session — a browser can never choose whose appointments are read — and
+`/api/appointments/[id]` checks `AssignedResource` before reading anything.
+
+### Requirements
+
+1. **`api` OAuth scope.** The dashboard calls the REST API, which an
+   `mcp_api`-only token cannot: Salesforce answers `401 INVALID_SCOPES`. Add
+   *Manage user data via APIs (api)* to the External Client App, add `api` to
+   `SALESFORCE_SCOPES`, and re-run the one-time authorization.
+2. **The Named Query saved** as `ADTTechnicianAppointments` (v68.0) with
+   parameters `serviceresourceid`, `startutc`, `endutc`, and the integration
+   user allowed to run it. A 404/403 is reported with the exact Salesforce error.
+   `ADT_APPOINTMENT_SOURCE=rest_query` is the documented fallback; it is never
+   switched on silently.
+3. **Technician mapping** (demo mode, below).
+4. **Mapbox tokens** for the map and route distance. Without them the tiles say
+   *Routing not configured*; no distance is ever estimated.
+
+The Named Query has `LIMIT 100`. A full page is treated as possibly incomplete:
+a `COUNT()` query confirms the total, and if that fails the count is shown as a
+lower bound (`100+`).
+
+### Sign-in and technician mapping
+
+The app talks to Salesforce as **one shared integration user**, which is never
+treated as the technician. The sign-in collects a name and technician ID (the
+Copilot still looks the schedule up by name, as before). The **dashboard** is
+scoped to a ServiceResource id that the server assigns only when:
+
+- `ADT_DEMO_MODE=true`, and
+- the technician ID is in `ADT_TECHNICIAN_DIRECTORY`, and
+- the access code entered at sign-in matches that entry.
+
+The mapping is written into an httpOnly cookie **HMAC-signed** with
+`SESSION_SECRET` (or `SETUP_SECRET`), so it cannot be edited to claim another
+technician. This is a clearly labelled demo mode ("Demo mode" badge in the
+header), not production authentication. A sign-in without a mapping still gets
+the Copilot, and the dashboard explains why it has no appointments.
 
 Appointments are remembered per technician so a job stays reachable after it
 leaves the Scheduled list; that memory is keyed by identity, so one technician
@@ -379,7 +422,7 @@ the read tools only.
 ## Tests
 
 ```bash
-npm test        # 280 tests
+npm test        # 310 tests
 npm run lint
 npm run build
 ```

@@ -16,7 +16,7 @@ vi.mock('next/headers', () => ({
   }),
 }));
 
-const { readTechnician, serialiseTechnician, sessionCookieOptions, TECHNICIAN_COOKIE } = await import('@/lib/session');
+const { parseSession, readTechnician, serialiseTechnician, sessionCookieOptions, TECHNICIAN_COOKIE } = await import('@/lib/session');
 const { deriveFirstName, toTechnician } = await import('@/lib/technician');
 
 function signIn(value: string) {
@@ -82,10 +82,34 @@ describe('readTechnician', () => {
   });
 
   it('caps a pasted-in value so the cookie cannot grow unbounded', () => {
-    const parsed = JSON.parse(serialiseTechnician('x'.repeat(500), 'y'.repeat(500)));
+    const session = parseSession(serialiseTechnician('x'.repeat(500), 'y'.repeat(500)));
 
-    expect(parsed.fullName.length).toBe(120);
-    expect(parsed.id.length).toBe(120);
+    expect(session?.technician.fullName.length).toBe(120);
+    expect(session?.technician.id.length).toBe(120);
+  });
+});
+
+describe('signed ServiceResource mapping', () => {
+  const SR = '0Hng7000000AbcDEFG';
+  const encode = (payload: object) => Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const now = () => Math.floor(Date.now() / 1000);
+
+  it('round-trips a verified ServiceResource id', () => {
+    expect(parseSession(serialiseTechnician('Sayantan Pal', 'TCH-7842', SR))?.serviceResourceId).toBe(SR);
+  });
+
+  it('has no mapping unless the server set one', () => {
+    expect(parseSession(serialiseTechnician('Sayantan Pal', 'TCH-7842'))?.serviceResourceId).toBeNull();
+  });
+
+  it('rejects a cookie whose payload was edited to claim another ServiceResource', () => {
+    const signature = serialiseTechnician('Sayantan Pal', 'TCH-7842', SR).split('.')[1];
+    const forged = encode({ fullName: 'Sayantan Pal', id: 'TCH-7842', sr: '0Hng7000000ZZZZZZZ', iat: now() });
+    expect(parseSession(`${forged}.${signature}`)).toBeNull();
+  });
+
+  it('rejects an unsigned cookie when a signing key is configured', () => {
+    expect(parseSession(`${encode({ fullName: 'A B', id: 'X', sr: SR, iat: now() })}.-`)).toBeNull();
   });
 });
 

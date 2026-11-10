@@ -11,7 +11,9 @@
 import { config } from '@/lib/config';
 import { describeFailure, getCapabilities, runCopilotTurn } from '@/lib/copilot';
 import { acquire, sweep } from '@/lib/rate-limit';
-import { readTechnician } from '@/lib/session';
+import { describeAuthorizedAppointment } from '@/lib/dashboard';
+import { isSalesforceId } from '@/lib/salesforce-rest';
+import { readSession, readTechnician } from '@/lib/session';
 import { encodeEvent } from '@/lib/stream';
 import type { CopilotChatRequest, CopilotEvent } from '@/types/copilot';
 
@@ -68,7 +70,11 @@ function parseBody(raw: unknown): { ok: true; body: CopilotChatRequest } | { ok:
     }
   }
 
-  return { ok: true, body: { message: message.trim(), history: turns } };
+  const { appointmentId } = raw as Partial<CopilotChatRequest>;
+  return {
+    ok: true,
+    body: { message: message.trim(), history: turns, appointmentId: isSalesforceId(appointmentId, '08p') ? appointmentId : undefined },
+  };
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -86,8 +92,16 @@ export async function POST(request: Request): Promise<Response> {
 
   // Identity comes from the cookie, never from the request body, so a turn
   // cannot claim to be someone else.
-  const technician = await readTechnician();
+  const session = await readSession();
+  const technician = session?.technician;
   if (!technician) return errorStream(SIGNED_OUT, false);
+
+  // Selected-appointment context is only used once Salesforce confirms it is
+  // assigned to this technician's ServiceResource; otherwise it is dropped.
+  const selected =
+    parsed.body.appointmentId && session.serviceResourceId
+      ? await describeAuthorizedAppointment(session.serviceResourceId, parsed.body.appointmentId)
+      : null;
 
   const gate = acquire(clientKey(request));
   if (!gate.ok) return errorStream(gate.reason, true);
@@ -106,7 +120,7 @@ export async function POST(request: Request): Promise<Response> {
       request.signal.addEventListener('abort', onAbort);
 
       try {
-        for await (const event of runCopilotTurn(technician, parsed.body)) {
+        for await (const event of runCopilotTurn(technician, parsed.body, selected)) {
           if (closed || request.signal.aborted) break;
           send(event);
         }

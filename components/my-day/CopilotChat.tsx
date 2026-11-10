@@ -164,10 +164,41 @@ interface Props {
   firstName: string;
   /** next/font variable class, so the portal gets Plus Jakarta Sans too. */
   fontClassName: string;
+  /**
+   * Docked: rendered in place as a persistent side panel on wide screens and
+   * as a full-screen overlay below that (opened by the host via `open`).
+   */
+  docked?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Appointment selected on the dashboard; only its id is sent, and the server verifies it. */
+  context?: { id: string; label: string } | null;
+  onClearContext?: () => void;
+  /** A prompt to send from outside (e.g. the job workspace); resent when `nonce` changes. */
+  prompt?: { text: string; nonce: number } | null;
+  starters?: string[];
 }
 
-export default function CopilotChat({ firstName, fontClassName }: Props) {
-  const [view, setView] = useState<View>('closed');
+const WIDE_QUERY = '(min-width: 1180px)';
+
+function subscribeWide(callback: () => void) {
+  const query = window.matchMedia(WIDE_QUERY);
+  query.addEventListener('change', callback);
+  return () => query.removeEventListener('change', callback);
+}
+
+export default function CopilotChat({
+  firstName,
+  fontClassName,
+  docked = false,
+  open: openProp = false,
+  onOpenChange,
+  context = null,
+  onClearContext,
+  prompt = null,
+  starters = STARTERS,
+}: Props) {
+  const [floatingView, setView] = useState<View>('closed');
   const [size, setSize] = useState<Size>(loadSize);
   const [conversation, setConversation] = useState<Conversation>(loadConversation);
   const [busy, setBusy] = useState(false);
@@ -179,6 +210,14 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
 
   const isClient = useSyncExternalStore(noopSubscribe, () => true, () => false);
   const browserOnline = useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true);
+  const isWide = useSyncExternalStore(subscribeWide, () => window.matchMedia(WIDE_QUERY).matches, () => true);
+  const pinned = docked && isWide;
+  const view: View = docked ? (pinned || openProp ? 'open' : 'closed') : floatingView;
+  const contextRef = useRef(context);
+  useEffect(() => {
+    contextRef.current = context;
+  }, [context]);
+  const viewMounted = useRef(false);
 
   const panelId = useId();
   const titleId = useId();
@@ -219,6 +258,12 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
   }, [size]);
 
   useEffect(() => {
+    // A docked panel is open on page load; focusing it then would steal focus from the page.
+    if (!viewMounted.current) {
+      viewMounted.current = true;
+      if (docked) return;
+    }
+    if (pinned) return;
     if (view === 'minimised') {
       restoreRef.current?.focus();
       return;
@@ -227,7 +272,7 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
     // One frame, so the panel is visible (no longer inert) before focusing into it.
     const frame = requestAnimationFrame(() => panelRef.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus());
     return () => cancelAnimationFrame(frame);
-  }, [view]);
+  }, [view, docked, pinned]);
 
   useEffect(() => {
     if (detailNumber) backRef.current?.focus();
@@ -279,12 +324,16 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
   }, []);
 
   const close = useCallback(() => {
+    if (docked) {
+      onOpenChange?.(false);
+      return;
+    }
     setView('closed');
     setActionStates((states) =>
       Object.fromEntries(Object.entries(states).filter(([, state]) => !state.confirm)),
     );
     launcherRef.current?.focus();
-  }, []);
+  }, [docked, onOpenChange]);
 
   /* ---- Chat -------------------------------------------------------- */
 
@@ -359,7 +408,7 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
       const response = await fetch('/api/copilot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, history }),
+        body: JSON.stringify({ message, history, appointmentId: contextRef.current?.id }),
       });
       if (!response.ok || !response.body) throw await readFailure(response);
 
@@ -420,6 +469,20 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
       submit();
     }
   };
+
+  // Docked panels are visible from the start, so fetch capabilities up front.
+  useEffect(() => {
+    if (!docked || capabilitiesRequested.current) return;
+    capabilitiesRequested.current = true;
+    void loadCapabilities();
+  }, [docked, loadCapabilities]);
+
+  const lastPrompt = useRef<number | null>(null);
+  useEffect(() => {
+    if (!prompt || prompt.nonce === lastPrompt.current) return;
+    lastPrompt.current = prompt.nonce;
+    void send(prompt.text);
+  }, [prompt, send]);
 
   /* ---- Appointment detail ----------------------------------------- */
 
@@ -528,12 +591,12 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
       event.stopPropagation();
       const confirming = Object.entries(actionStates).find(([, state]) => state.confirm);
       if (confirming) cancelConfirm(confirming[0]);
-      else close();
+      else if (!pinned) close();
       return;
     }
 
     // Full-screen on mobile, so focus stays inside the sheet there.
-    if (event.key === 'Tab' && window.matchMedia('(max-width: 760px)').matches && panelRef.current) {
+    if (event.key === 'Tab' && (docked ? !pinned : window.matchMedia('(max-width: 760px)').matches) && panelRef.current) {
       const focusable = [...panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
         (element) => element.offsetParent !== null,
       );
@@ -567,8 +630,9 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
         className="cp-panel"
         data-state={view}
         data-size={size}
-        role="dialog"
-        aria-modal="false"
+        data-variant={docked ? 'docked' : 'floating'}
+        role={pinned ? 'region' : 'dialog'}
+        aria-modal={pinned ? undefined : docked ? 'true' : 'false'}
         aria-labelledby={titleId}
         inert={view !== 'open'}
         onKeyDown={onPanelKeyDown}
@@ -579,7 +643,7 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
           </span>
           <div className="cp-heading">
             <h2 id={titleId} className="cp-title">
-              ADT Copilot
+              {docked ? 'ADT Technician Copilot' : 'ADT Copilot'}
             </h2>
             <p className={`cp-online cp-online--${status}`}>
               <span className="cp-online-dot" aria-hidden="true" />
@@ -597,6 +661,7 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
             >
               <NewChatIcon />
             </button>
+            {!docked && (
             <button
               type="button"
               className="cp-icon-btn"
@@ -607,14 +672,33 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
             >
               {size === 'expanded' ? <ShrinkIcon /> : <EnlargeIcon />}
             </button>
-            <button type="button" className="cp-icon-btn" onClick={() => setView('minimised')} aria-label="Minimise ADT Copilot">
-              <MinimiseIcon />
-            </button>
-            <button type="button" className="cp-icon-btn" onClick={close} aria-label="Close ADT Copilot">
-              <CloseIcon />
-            </button>
+            )}
+            {!docked && (
+              <button type="button" className="cp-icon-btn" onClick={() => setView('minimised')} aria-label="Minimise ADT Copilot">
+                <MinimiseIcon />
+              </button>
+            )}
+            {!pinned && (
+              <button type="button" className="cp-icon-btn" onClick={close} aria-label="Close ADT Copilot">
+                <CloseIcon />
+              </button>
+            )}
           </div>
         </header>
+
+        {context && (
+          <div className="cp-context" role="status">
+            <span className="cp-context-label">Context</span>
+            <span className="cp-context-value" title={context.label}>
+              {context.label}
+            </span>
+            {onClearContext && (
+              <button type="button" className="cp-icon-btn cp-context-clear" onClick={onClearContext} aria-label="Clear selected appointment context">
+                <CloseIcon />
+              </button>
+            )}
+          </div>
+        )}
 
         {detail && (
           <AppointmentDetail
@@ -634,11 +718,15 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
             <div className="cp-welcome">
               <Image className="cp-welcome-logo" src={LOGO} alt="" width={56} height={55} />
               <p className="cp-welcome-title">Hi {firstName}, how can I help?</p>
-              <p className="cp-welcome-text">I can check your schedule and appointments in Salesforce.</p>
+              <p className="cp-welcome-text">
+                {docked
+                  ? 'I can check your schedule, customers, parts, inventory and upsell options in Salesforce. Select an appointment to give me context.'
+                  : 'I can check your schedule and appointments in Salesforce.'}
+              </p>
               <div className="cp-chips" role="group" aria-label="Suggested questions">
-                {STARTERS.map((prompt) => (
-                  <button key={prompt} type="button" className="cp-chip" disabled={busy} onClick={() => void send(prompt)}>
-                    {prompt}
+                {starters.map((starter) => (
+                  <button key={starter} type="button" className="cp-chip" disabled={busy} onClick={() => void send(starter)}>
+                    {starter}
                   </button>
                 ))}
               </div>
@@ -774,6 +862,8 @@ export default function CopilotChat({ firstName, fontClassName }: Props) {
       )}
     </div>
   );
+
+  if (docked) return panel;
 
   return (
     <>

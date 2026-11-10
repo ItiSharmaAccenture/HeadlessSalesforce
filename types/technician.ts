@@ -8,7 +8,7 @@
 export interface Technician {
   /** Shown on the dashboard. Never sent to Salesforce. */
   id: string;
-  /** The name Salesforce knows the technician by; used to look up their work. */
+  /** The name Salesforce knows the technician by; the Copilot uses it to look up their work. */
   fullName: string;
   /** Derived from fullName, not collected separately. */
   firstName: string;
@@ -18,4 +18,6 @@ export interface Technician {
 export interface SignInRequest {
   name: string;
   id: string;
+  /** Demo-mode access code; required for technician ids in the server-side directory. */
+  accessCode?: string;
 }

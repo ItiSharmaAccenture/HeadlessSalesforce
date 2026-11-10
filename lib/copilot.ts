@@ -532,10 +532,17 @@ function unsupportedMessage(action: StatusAction, capabilities: ToolCapabilities
 /* ------------------------------------------------------------------ */
 
 /** Exported so the scope rules can be asserted; not used outside this module. */
+export interface SelectedAppointment {
+  id: string;
+  appointmentNumber: string | null;
+  subject: string | null;
+}
+
 export function copilotInstruction(
   technician: Technician,
   capabilities: ToolCapabilities,
   tools: ApprovedTool[],
+  selected?: SelectedAppointment | null,
 ): string {
   const scheduleTool = capabilities.schedule?.name;
   const { fullName, firstName } = technician;
@@ -569,6 +576,15 @@ export function copilotInstruction(
     '- Put a one-line lead-in before a list, then a blank line, then the bullets.',
     '- Plain text and bullets only; **bold** is fine. No tables, headings or Markdown links.',
     `- You may address the technician as ${firstName}, but do not greet them in every answer.`,
+    ...(selected
+      ? [
+          '',
+          'Selected appointment (verified by the app as assigned to this technician):',
+          `- ${selected.appointmentNumber ?? 'Number unavailable'}${selected.subject ? ` — ${selected.subject.replace(/\s+/g, ' ').slice(0, 120)}` : ''}, record Id ${selected.id}.`,
+          '- When the technician says "this job", "this customer", "this appointment" or asks about parts, inventory, upsell or closure without naming one, it means this appointment. Use its record Id for tools that take appointment Ids.',
+          '- This selection is context, not permission: still never change a status yourself.',
+        ]
+      : []),
     '',
     tools.length > 0
       ? `Available Salesforce tools: ${tools.map((tool) => tool.name).join(', ')}.`
@@ -749,6 +765,7 @@ async function* runStatusIntent(
 export async function* runCopilotTurn(
   technician: Technician,
   body: CopilotChatRequest,
+  selected?: SelectedAppointment | null,
 ): AsyncGenerator<CopilotEvent> {
   const statusIntent = detectStatusIntent(body.message);
   if (statusIntent) {
@@ -779,7 +796,7 @@ export async function* runCopilotTurn(
       visible = tools.filter((tool) => !withheldFromModel(tool, capabilities));
       return visible;
     },
-    systemInstruction: (tools) => copilotInstruction(technician, capabilities, tools),
+    systemInstruction: (tools) => copilotInstruction(technician, capabilities, tools, selected),
     prepareArguments: (tool, args) =>
       capabilities.schedule?.name === tool.name ? buildActionArgs(tool, technician) : args,
     onToolResult: (tool, result: ParsedToolResult) => {

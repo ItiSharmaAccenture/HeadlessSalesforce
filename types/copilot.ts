@@ -61,6 +61,11 @@ export interface CopilotCapabilities {
 export interface CopilotChatRequest {
   message: string;
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  /**
+   * Appointment selected on the dashboard. Only an id: the server checks it is
+   * assigned to the signed-in technician before the model ever sees it.
+   */
+  appointmentId?: string;
 }
 
 /** GET /api/copilot/appointments/[number] */
