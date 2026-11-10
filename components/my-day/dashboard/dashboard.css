@@ -38,7 +38,10 @@
 
   display: grid;
   grid-template-columns: var(--sb) minmax(0, 1fr) var(--cp);
-  min-height: 100dvh;
+  /* globals.css locks html/body (overflow: hidden), so the app owns its scrolling:
+     the main column scrolls, the sidebar and Copilot stay full height. */
+  height: 100dvh;
+  overflow: hidden;
   background: radial-gradient(1200px 400px at 30% -120px, #e2ecfd 0%, transparent 70%), var(--page);
   color: var(--ink);
   font-family: var(--font-jakarta, "Plus Jakarta Sans"), "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -280,6 +283,9 @@
 
 .adt-main {
   min-width: 0;
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
 }
@@ -683,6 +689,22 @@
   .adt-mapcard {
     position: sticky;
     top: 92px;
+  }
+
+  /* The timeline matches the map's height and scrolls inside its card. */
+  .adt-timeline {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - 140px);
+    min-height: 440px;
+  }
+
+  .adt-timeline .adt-tl-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #c3cfe2 transparent;
   }
 
   .adt-mapcard .adt-map {

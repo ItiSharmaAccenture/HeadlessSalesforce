@@ -14,7 +14,7 @@
 import Image from 'next/image';
 import { Bot, List, Map as MapIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
 import CopilotChat from '@/components/my-day/CopilotChat';
 import type { DashboardResult, DashboardView, RouteResult, TechnicianProfileResult } from '@/types/dashboard';
@@ -39,6 +39,7 @@ const COPILOT_STARTERS = [
 ];
 
 const REVALIDATE_MS = 5 * 60_000;
+const noopSubscribe = () => () => {};
 const COLLAPSE_KEY = 'adt-myday:sidebar-collapsed';
 
 type Loadable<T> = { data: T | null; loading: boolean; error: string | null };
@@ -88,6 +89,8 @@ interface MyDayAppProps {
 
 export default function MyDayApp({ technician, mapToken, fontClassName }: MyDayAppProps) {
   const router = useRouter();
+  // False during server render and hydration, true after: gates clock-dependent text.
+  const mounted = useSyncExternalStore(noopSubscribe, () => true, () => false);
 
   const [view, setView] = useState<DashboardView>('today');
   const [date, setDate] = useState<string | null>(null);
@@ -259,7 +262,7 @@ export default function MyDayApp({ technician, mapToken, fontClassName }: MyDayA
       requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.adt-copilot .cp-input')?.focus());
     } else {
       setView('today');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      document.querySelector('.adt-main')?.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -284,10 +287,14 @@ export default function MyDayApp({ technician, mapToken, fontClassName }: MyDayA
           <section className="adt-banner" aria-labelledby="adt-greeting">
             <div className="adt-banner-text">
               <h2 id="adt-greeting">
-                {greeting(timezone)}, {firstName}
+                {mounted ? greeting(timezone) : 'Welcome'}, {firstName}
               </h2>
               <p>
-                {localToday ? formatLongDate(localToday) : new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: timezone }).format(new Date())}
+                {localToday
+                  ? formatLongDate(localToday)
+                  : mounted
+                    ? new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: timezone }).format(new Date())
+                    : '\u00a0'}
                 {todayOk?.timezoneSource === 'server_default' ? <span className="adt-tz-note"> · {timezone} (default time zone)</span> : null}
               </p>
             </div>

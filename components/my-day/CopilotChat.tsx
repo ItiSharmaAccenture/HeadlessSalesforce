@@ -863,7 +863,9 @@ export default function CopilotChat({
     </div>
   );
 
-  if (docked) return panel;
+  // The conversation is restored from sessionStorage, which the server cannot
+  // see, so the docked panel renders after hydration to avoid a mismatch.
+  if (docked) return isClient ? panel : <div className={`copilot ${fontClassName}`} aria-hidden="true" />;
 
   return (
     <>
