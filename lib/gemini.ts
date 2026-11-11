@@ -177,8 +177,21 @@ export interface AssistantOptions {
   selectTools?: (tools: ApprovedTool[]) => ApprovedTool[];
   /** Rewrites validated arguments just before the call, e.g. to pin an identity. */
   prepareArguments?: (tool: ApprovedTool, args: Record<string, unknown>) => Record<string, unknown>;
-  /** Observes each successful result. A returned string replaces the text Gemini receives. */
-  onToolResult?: (tool: ApprovedTool, result: ParsedToolResult) => string | void;
+  /**
+   * Observes each successful result. A returned string replaces the text Gemini
+   * receives. `context.callTool` runs another approved tool on the same session
+   * (validated like any model call), so a result can be enriched with verified
+   * Salesforce data rather than left for the model to guess at.
+   */
+  onToolResult?: (
+    tool: ApprovedTool,
+    result: ParsedToolResult,
+    context: ToolResultContext,
+  ) => string | void | Promise<string | void>;
+}
+
+export interface ToolResultContext {
+  callTool: (name: string, args: Record<string, unknown>) => Promise<ParsedToolResult>;
 }
 
 /**
@@ -442,7 +455,17 @@ export async function* runAssistant(body: ChatRequestBody, options: AssistantOpt
             result.truncated ? 'Parsed MCP response (truncated to fit)' : 'Parsed MCP response',
           );
 
-          const forModel = options.onToolResult?.(tool, result) ?? result.text;
+          const activeSession = session;
+          const context: ToolResultContext = {
+            callTool: async (followName, followArgs) => {
+              const followTool = toolsByName.get(followName);
+              if (!followTool) throw new Error(`Tool "${followName}" is not approved for use.`);
+              const followValidation = validateToolArguments(followTool, followArgs);
+              if (!followValidation.ok) throw new Error(followValidation.reason);
+              return activeSession.callTool(followName, followValidation.args);
+            },
+          };
+          const forModel = (await options.onToolResult?.(tool, result, context)) ?? result.text;
 
           responseParts.push({
             functionResponse: {
