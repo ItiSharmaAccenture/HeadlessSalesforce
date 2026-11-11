@@ -212,7 +212,7 @@ export function validateToolArguments(
     return { ok: false, reason: 'Tool arguments must be a JSON object.' };
   }
 
-  const input = (rawArgs ?? {}) as Record<string, unknown>;
+  const input = wrapActionInputs(tool, (rawArgs ?? {}) as Record<string, unknown>);
   const schema = tool.inputSchema;
   const properties = schema.properties ?? {};
   const knownKeys = Object.keys(properties);
@@ -290,7 +290,32 @@ export function validateToolArguments(
   return { ok: true, args, notes };
 }
 
-type StringOutcome = { ok: true; scoped: boolean; rewritten?: string } | { ok: false; reason: string };
+/**
+ * Invocable Apex actions take `{ inputs: [item] }`, but models often send the
+ * item's fields flat (`{ accountName: "…" }`) or `inputs` as a single object.
+ * Both would otherwise reach Salesforce as an empty request, so they are put
+ * back into the published shape before validation.
+ */
+export function wrapActionInputs(tool: ApprovedTool, args: Record<string, unknown>): Record<string, unknown> {
+  const inputs = tool.inputSchema.properties?.inputs;
+  if (inputs?.type !== 'array' || !inputs.items || typeof inputs.items !== 'object') return args;
+
+  if (args.inputs && typeof args.inputs === 'object' && !Array.isArray(args.inputs)) {
+    return { ...args, inputs: [args.inputs] };
+  }
+  if ('inputs' in args) return args;
+
+  const itemKeys = Object.keys(inputs.items.properties ?? {});
+  const item: Record<string, unknown> = {};
+  const rest: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (itemKeys.includes(key)) item[key] = value;
+    else rest[key] = value;
+  }
+  return Object.keys(item).length > 0 ? { ...rest, inputs: [item] } : args;
+}
+
+type StringOutcome ={ ok: true; scoped: boolean; rewritten?: string } | { ok: false; reason: string };
 
 /** Classifies one string argument and validates it against the policy. */
 function inspectString(key: string, value: string, policy: Policy): StringOutcome {
