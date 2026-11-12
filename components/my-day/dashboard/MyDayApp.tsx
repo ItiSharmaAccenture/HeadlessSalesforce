@@ -22,6 +22,7 @@ import type { Technician } from '@/types/technician';
 import { formatLongDate, greeting } from './format';
 import Header, { type Connection } from './Header';
 import JobsDrawer from './JobsDrawer';
+import AccountPanel from './AccountPanel';
 import JobWorkspace from './JobWorkspace';
 import KpiTiles from './KpiTiles';
 import RouteMap from './RouteMap';
@@ -104,6 +105,7 @@ export default function MyDayApp({ technician, mapToken, fontClassName }: MyDayA
   const [jobsOpen, setJobsOpen] = useState(false);
   const [routeOpen, setRouteOpen] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [accountId, setAccountId] = useState<string | null>(null);
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [copilotPrompt, setCopilotPrompt] = useState<{ text: string; nonce: number } | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -246,6 +248,11 @@ export default function MyDayApp({ technician, mapToken, fontClassName }: MyDayA
     setWorkspaceId(id);
   }, []);
 
+  const openAccount = useCallback((id: string) => {
+    setSelectedId(id);
+    setAccountId(id);
+  }, []);
+
   const askCopilot = useCallback((prompt: string) => {
     setCopilotOpen(true);
     setCopilotPrompt({ text: prompt, nonce: Date.now() });
@@ -335,6 +342,7 @@ export default function MyDayApp({ technician, mapToken, fontClassName }: MyDayA
               selectedId={selectedId}
               onSelect={select}
               onOpenJob={openJob}
+              onOpenAccount={openAccount}
             />
             <section className="adt-card adt-mapcard" aria-label="Route map">
               <RouteMap
@@ -403,6 +411,7 @@ export default function MyDayApp({ technician, mapToken, fontClassName }: MyDayA
           openJob(id);
         }}
       />
+      <AccountPanel appointmentId={accountId} onClose={() => setAccountId(null)} />
       <JobWorkspace appointmentId={workspaceId} timezone={timezone} onClose={() => setWorkspaceId(null)}
         onAskCopilot={(text) => {
           setWorkspaceId(null);

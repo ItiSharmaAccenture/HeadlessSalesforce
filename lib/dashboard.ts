@@ -22,6 +22,9 @@ import { countOwnerAppointments, isOwnedBy, runOwnerAppointments, type Appointme
 import { describeFields, isSalesforceId, pickFields, SalesforceRestError, soql, soqlString } from './salesforce-rest';
 import { isValidDate, isValidTimeZone, localDate, rangeFor, startOfWeek } from './time-range';
 import type {
+  AccountContact,
+  AccountProperty,
+  AccountSummaryResult,
   AppointmentWorkspaceResult,
   DashboardAppointment,
   DashboardResult,
@@ -405,7 +408,7 @@ export async function getAppointmentWorkspace(serviceResourceId: string, appoint
       'Id', 'AppointmentNumber', 'Subject', 'Status', 'Description', 'SchedStartTime', 'SchedEndTime',
       'ArrivalWindowStartTime', 'ArrivalWindowEndTime', 'Street', 'City', 'State', 'PostalCode', 'Country',
       'Latitude', 'Longitude', 'ParentRecordId', 'ParentRecordType', 'WorkType.Name',
-      'Account.Name', 'Account.Phone', 'Contact.Name', 'Contact.Phone',
+      'AccountId', 'Account.Name', 'Account.Phone', 'ContactId', 'Contact.Name', 'Contact.Phone',
     ]);
     const result = await soql<Raw>(`SELECT ${fields.join(', ')} FROM ServiceAppointment WHERE Id = ${soqlString(appointmentId)} LIMIT 1`);
     if (!result.records[0]) return { status: 'unavailable', code: 'not_found', message: 'The appointment was not found.' };
@@ -541,4 +544,120 @@ export async function describeAuthorizedAppointment(
     log.warn('dashboard', 'Copilot context could not be verified', { code: (error as SalesforceRestError).code });
     return null;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Account summary                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The customer account behind one appointment: its address, its contacts, and
+ * the Property_Detail__c rows describing the site.
+ *
+ * Keyed by appointment rather than by account id on purpose. The technician's
+ * claim on an account is that they are assigned to a job for it, so taking an
+ * account id from the browser would need a second, weaker ownership rule.
+ * Here the existing AssignedResource check is the only rule.
+ *
+ * Property_Detail__c is a custom object, so its query is a separate section:
+ * an org without it still sees the contacts rather than an empty panel.
+ */
+export async function getAccountSummary(serviceResourceId: string, appointmentId: string): Promise<AccountSummaryResult> {
+  if (!isSalesforceId(appointmentId, '08p')) {
+    return { status: 'unavailable', code: 'not_found', message: 'That is not a service appointment id.' };
+  }
+
+  let accountId: string | null;
+  let appointmentContactId: string | null;
+  try {
+    const [assigned, available] = await Promise.all([
+      isAssignedTo(serviceResourceId, appointmentId),
+      describeFields('ServiceAppointment'),
+    ]);
+    if (!assigned) return { status: 'unavailable', code: 'forbidden', message: 'This appointment is not assigned to you.' };
+    if (!available.has('AccountId')) {
+      return {
+        status: 'unavailable',
+        code: 'not_found',
+        message: 'Appointments in this org are not linked to a customer account, so there is nothing to summarise.',
+      };
+    }
+
+    const fields = pickFields(available, ['Id', 'AccountId', 'ContactId']);
+    const result = await soql<Raw>(`SELECT ${fields.join(', ')} FROM ServiceAppointment WHERE Id = ${soqlString(appointmentId)} LIMIT 1`);
+    const row = result.records[0];
+    if (!row) return { status: 'unavailable', code: 'not_found', message: 'The appointment was not found.' };
+    accountId = str(row.AccountId);
+    appointmentContactId = str(row.ContactId);
+  } catch (error) {
+    return toUnavailable(error);
+  }
+
+  if (!accountId) {
+    return { status: 'unavailable', code: 'not_found', message: 'No customer account is linked to this appointment.' };
+  }
+
+  // Standard fields and the Contacts child relationship: one round trip.
+  let account: Raw;
+  try {
+    const result = await soql<Raw>(
+      'SELECT Id, Name, ShippingStreet, ShippingCity, ShippingState, ShippingPostalCode, ShippingCountry, ' +
+        '(SELECT Id, Name, Title, Email, Phone, MobilePhone FROM Contacts ORDER BY Name LIMIT 20) ' +
+        `FROM Account WHERE Id = ${soqlString(accountId)} LIMIT 1`,
+    );
+    const row = result.records[0];
+    if (!row) return { status: 'unavailable', code: 'not_found', message: 'The customer account was not found.' };
+    account = row;
+  } catch (error) {
+    return toUnavailable(error);
+  }
+
+  const properties = await section(async () => {
+    const result = await soql<Raw>(
+      'SELECT Id, Name, Property_Size__c, Bedrooms__c, Bathrooms__c, Year_Built__c, Property_Type__c, ' +
+        `Security_System_Base__c, Monitoring_Status__c FROM Property_Detail__c WHERE Account__c = ${soqlString(accountId!)} ` +
+        'ORDER BY Name LIMIT 20',
+    );
+    return result.records.map(
+      (row): AccountProperty => ({
+        id: String(row.Id),
+        name: str(row.Name),
+        sizeSqFt: numOrNull(row.Property_Size__c),
+        bedrooms: numOrNull(row.Bedrooms__c),
+        bathrooms: numOrNull(row.Bathrooms__c),
+        yearBuilt: numOrNull(row.Year_Built__c),
+        propertyType: str(row.Property_Type__c),
+        securitySystemBase: str(row.Security_System_Base__c),
+        monitoringStatus: str(row.Monitoring_Status__c),
+      }),
+    );
+  });
+
+  const contactRows = (account.Contacts as { records?: Raw[] } | null)?.records ?? [];
+  const contacts: AccountContact[] = contactRows.map((row) => ({
+    id: String(row.Id),
+    name: str(row.Name),
+    title: str(row.Title),
+    email: str(row.Email),
+    phone: str(row.Phone),
+    mobilePhone: str(row.MobilePhone),
+    primary: appointmentContactId !== null && String(row.Id) === appointmentContactId,
+  }));
+  // The appointment's own contact first; the rest keep the query's name order.
+  contacts.sort((a, b) => Number(b.primary) - Number(a.primary));
+
+  return {
+    status: 'ok',
+    accountId,
+    accountName: str(account.Name),
+    address: {
+      street: str(account.ShippingStreet),
+      city: str(account.ShippingCity),
+      state: str(account.ShippingState),
+      postalCode: str(account.ShippingPostalCode),
+      country: str(account.ShippingCountry),
+    },
+    properties,
+    contacts: { status: 'ok', data: contacts },
+  };
 }

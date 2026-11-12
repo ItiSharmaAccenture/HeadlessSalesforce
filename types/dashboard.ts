@@ -166,3 +166,48 @@ export interface AppointmentWorkspace {
 }
 
 export type AppointmentWorkspaceResult = AppointmentWorkspace | Unavailable;
+
+/* ------------------------------------------------------------------ */
+/* Account summary panel                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A row of the custom Property_Detail__c object. Every field is optional
+ * because an org may hold the object without populating it, and the panel
+ * renders only the ones that came back.
+ */
+export interface AccountProperty {
+  id: string;
+  name: string | null;
+  sizeSqFt: number | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  yearBuilt: number | null;
+  propertyType: string | null;
+  securitySystemBase: string | null;
+  monitoringStatus: string | null;
+}
+
+export interface AccountContact {
+  id: string;
+  name: string | null;
+  title: string | null;
+  email: string | null;
+  phone: string | null;
+  mobilePhone: string | null;
+  /** The contact named on the appointment itself, listed first. */
+  primary: boolean;
+}
+
+export interface AccountSummary {
+  status: 'ok';
+  accountId: string;
+  accountName: string | null;
+  /** Shipping address of the account: the service address for a residence. */
+  address: AppointmentAddress;
+  /** Separate sections: a missing custom object must not hide the contacts. */
+  properties: Section<AccountProperty[]>;
+  contacts: Section<AccountContact[]>;
+}
+
+export type AccountSummaryResult = AccountSummary | Unavailable;

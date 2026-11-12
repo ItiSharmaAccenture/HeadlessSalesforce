@@ -1,6 +1,6 @@
 'use client';
 
-import { Briefcase, CalendarDays, ChevronRight, Clock, MapPin, RefreshCw } from 'lucide-react';
+import { Briefcase, Building2, CalendarDays, ChevronRight, Clock, MapPin, RefreshCw } from 'lucide-react';
 
 import type { DashboardAppointment, DashboardResult, DashboardView } from '@/types/dashboard';
 import { formatAddress, formatShortDate, formatTime, formatWindow, isCanceled, localDateOf, nextAppointmentId, statusTone } from './format';
@@ -17,6 +17,7 @@ interface TimelineProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onOpenJob: (id: string) => void;
+  onOpenAccount: (id: string) => void;
 }
 
 export function StatusChip({ status }: { status: string | null }) {
@@ -31,6 +32,7 @@ export function AppointmentCard({
   isNext,
   onSelect,
   onOpenJob,
+  onOpenAccount,
 }: {
   appointment: DashboardAppointment;
   timezone: string;
@@ -39,6 +41,7 @@ export function AppointmentCard({
   isNext: boolean;
   onSelect: (id: string) => void;
   onOpenJob: (id: string) => void;
+  onOpenAccount: (id: string) => void;
 }) {
   const address = formatAddress(appointment.address);
   const canceled = isCanceled(appointment);
@@ -69,15 +72,20 @@ export function AppointmentCard({
             {address ?? 'Address unavailable'}
           </span>
         </button>
-        <button type="button" className="adt-tl-open" onClick={() => onOpenJob(appointment.id)}>
-          Open job <ChevronRight size={16} aria-hidden="true" />
-        </button>
+        <div className="adt-tl-actions">
+          <button type="button" className="adt-tl-open" onClick={() => onOpenAccount(appointment.id)}>
+            <Building2 size={15} aria-hidden="true" /> Account summary
+          </button>
+          <button type="button" className="adt-tl-open" onClick={() => onOpenJob(appointment.id)}>
+            Open job <ChevronRight size={16} aria-hidden="true" />
+          </button>
+        </div>
       </article>
     </li>
   );
 }
 
-export default function Timeline({ data, loading, error, view, date, onViewChange, onRefresh, selectedId, onSelect, onOpenJob }: TimelineProps) {
+export default function Timeline({ data, loading, error, view, date, onViewChange, onRefresh, selectedId, onSelect, onOpenJob, onOpenAccount }: TimelineProps) {
   const ok = data?.status === 'ok' ? data : null;
   const nextId = ok ? nextAppointmentId(ok.appointments) : null;
 
@@ -159,6 +167,7 @@ export default function Timeline({ data, loading, error, view, date, onViewChang
                     isNext={appointment.id === nextId}
                     onSelect={onSelect}
                     onOpenJob={onOpenJob}
+                    onOpenAccount={onOpenAccount}
                   />
                 ))}
               </ol>

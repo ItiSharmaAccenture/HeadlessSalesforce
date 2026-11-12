@@ -2057,3 +2057,85 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Account summary panel                                               */
+/* ------------------------------------------------------------------ */
+
+/* Two actions share the card footer; the divider sits on the row, not each
+   button, so the existing single-button border does not double up. */
+.adt-tl-actions {
+  display: flex;
+  border-top: 1px solid var(--line);
+}
+
+.adt-tl-actions .adt-tl-open {
+  border-top: 0 !important;
+  justify-content: center;
+}
+
+.adt-tl-actions .adt-tl-open:first-child {
+  border-right: 1px solid var(--line) !important;
+}
+
+.adt-acct-prop + .adt-acct-prop {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.adt-acct-prop h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.adt-acct-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.adt-acct-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafcff;
+}
+
+.adt-acct-tile-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.adt-acct-tile strong {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.adt-acct-contact + .adt-acct-contact {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.adt-acct-title {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.adt-acct-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
