@@ -194,8 +194,25 @@ export async function completeAuthorization(code: string, state: string): Promis
 /* Access token retrieval                                              */
 /* ------------------------------------------------------------------ */
 
-/** De-duplicates concurrent refreshes so two chats cannot race the endpoint. */
+/**
+ * De-duplicates concurrent refreshes within one process. On a serverless host
+ * each instance has its own copy, so cross-instance races are handled by the
+ * concurrent_request retry in refreshTokens.
+ */
 let refreshInFlight: Promise<StoredTokens> | null = null;
+
+/** Back-off between attempts after Salesforce reports a concurrent refresh. */
+const CONCURRENT_RETRY_DELAYS_MS = [300, 800, 1500, 3000];
+
+function isConcurrentRefresh(message: string): boolean {
+  return /concurrent_request|concurrent request/i.test(message);
+}
+
+function isExpired(tokens: StoredTokens): boolean {
+  return tokens.expiresAt !== undefined && Date.now() >= tokens.expiresAt - EXPIRY_SKEW_MS;
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 async function refreshTokens(previous: StoredTokens): Promise<StoredTokens> {
   const refreshToken = previous.refreshToken;
@@ -208,13 +225,34 @@ async function refreshTokens(previous: StoredTokens): Promise<StoredTokens> {
 
   refreshInFlight ??= (async () => {
     try {
-      const body = await postToken(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken }));
-      if (!body.access_token) throw new Error('refresh response contained no access token');
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const body = await postToken(
+            new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken }),
+          );
+          if (!body.access_token) throw new Error('refresh response contained no access token');
 
-      const tokens = toStoredTokens(body, previous);
-      await writeTokens(tokens);
-      log.info('salesforce-auth', 'Access token refreshed');
-      return tokens;
+          const tokens = toStoredTokens(body, previous);
+          await writeTokens(tokens);
+          log.info('salesforce-auth', 'Access token refreshed');
+          return tokens;
+        } catch (error) {
+          const message = (error as Error).message;
+          if (!isConcurrentRefresh(message) || attempt >= CONCURRENT_RETRY_DELAYS_MS.length) throw error;
+
+          // Another serverless instance is refreshing the same token. The
+          // in-memory guard above cannot see it, so wait for that instance to
+          // write its result to the shared store and adopt it.
+          log.warn('salesforce-auth', 'Concurrent refresh detected; waiting for the other instance', { attempt });
+          await sleep(CONCURRENT_RETRY_DELAYS_MS[attempt]);
+
+          const latest = await readTokens();
+          if (latest && latest.accessToken !== previous.accessToken && !isExpired(latest)) {
+            log.info('salesforce-auth', 'Adopted access token refreshed by another instance');
+            return latest;
+          }
+        }
+      }
     } catch (error) {
       const message = (error as Error).message;
       log.error('salesforce-auth', 'Token refresh failed', { message });
@@ -251,8 +289,7 @@ export async function getAccessToken(forceRefresh = false): Promise<string> {
     );
   }
 
-  const expired = tokens.expiresAt !== undefined && Date.now() >= tokens.expiresAt - EXPIRY_SKEW_MS;
-  if (!forceRefresh && !expired) return tokens.accessToken;
+  if (!forceRefresh && !isExpired(tokens)) return tokens.accessToken;
 
   const refreshed = await refreshTokens(tokens);
   return refreshed.accessToken;
