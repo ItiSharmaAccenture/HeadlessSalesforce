@@ -18,6 +18,8 @@ import { encodeEvent } from '@/lib/stream';
 import type { CopilotChatRequest, CopilotEvent } from '@/types/copilot';
 
 export const runtime = 'nodejs';
+/** Vercel kills functions at their max duration, which cuts the SSE stream mid-reply. */
+export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 const SSE_HEADERS = {

@@ -10,6 +10,8 @@ import { readTechnician } from '@/lib/session';
 import { STATUS_ACTION_LABELS, type StatusAction } from '@/types/copilot';
 
 export const runtime = 'nodejs';
+/** Vercel kills functions at their max duration, which cuts the SSE stream mid-reply. */
+export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 function signedOut(): Response {
