@@ -313,16 +313,25 @@ export async function* runAssistant(body: ChatRequestBody, options: AssistantOpt
       const reasoning = started('llm_reasoning');
       yield reasoning.event;
 
+      // One deadline covers the request and the streamed response, so a stall
+      // at either point surfaces as a timeout message instead of a dropped
+      // connection when the host kills the function.
+      const roundStartedAt = Date.now();
+      const deadline = AbortSignal.timeout(config.limits.geminiTimeoutMs);
+      const timedOut = () => deadline.aborted;
+      log.info('gemini', 'Round started', { round, model: config.gemini.model, contents: contents.length });
+
       let stream;
       try {
         stream = await ai.models.generateContentStream({
           model: config.gemini.model,
           contents,
-          config: generationConfig,
+          config: { ...generationConfig, abortSignal: deadline },
         });
       } catch (error) {
+        log.error('gemini', 'Round request failed', { round, durationMs: Date.now() - roundStartedAt, timedOut: timedOut() });
         yield failedStage('llm_reasoning', reasoning.key, 'Gemini request failed');
-        throw new GeminiConfigError(describeGeminiError(error));
+        throw new GeminiConfigError(timedOut() ? geminiTimeoutMessage() : describeGeminiError(error));
       }
 
       // Parts are collected exactly as received so that thought signatures stay
@@ -350,11 +359,19 @@ export async function* runAssistant(body: ChatRequestBody, options: AssistantOpt
           }
         }
       } catch (error) {
+        log.error('gemini', 'Round stream interrupted', { round, durationMs: Date.now() - roundStartedAt, timedOut: timedOut() });
         yield failedStage('llm_reasoning', reasoning.key, 'The Gemini response stream was interrupted');
-        throw new GeminiConfigError(describeGeminiError(error));
+        throw new GeminiConfigError(timedOut() ? geminiTimeoutMessage() : describeGeminiError(error));
       }
 
       const calls = modelParts.filter((part) => part.functionCall?.name);
+      log.info('gemini', 'Round finished', {
+        round,
+        durationMs: Date.now() - roundStartedAt,
+        finishReason,
+        toolCalls: calls.length,
+        textChars: streamedText.length,
+      });
 
       if (calls.length === 0) {
         yield finished('llm_reasoning', reasoning.key);
@@ -534,6 +551,10 @@ function describeError(error: unknown): string {
 function shortError(error: unknown): string {
   const message = describeError(error);
   return message.length > 120 ? `${message.slice(0, 117)}…` : message;
+}
+
+function geminiTimeoutMessage(): string {
+  return `Gemini did not answer within ${Math.round(config.limits.geminiTimeoutMs / 1000)} seconds. Please try again.`;
 }
 
 function describeGeminiError(error: unknown): string {

@@ -130,6 +130,12 @@ export const config = {
     rateLimitRequests: num('RATE_LIMIT_REQUESTS', 20),
     rateLimitWindowMs: num('RATE_LIMIT_WINDOW_MS', 60_000),
     mcpTimeoutMs: num('MCP_TIMEOUT_MS', 30_000),
+    /**
+     * Upper bound on one Gemini round (request plus streamed response). Without
+     * it a stalled call runs until the host kills the function, which the
+     * browser can only report as a dropped connection.
+     */
+    geminiTimeoutMs: num('GEMINI_TIMEOUT_MS', 90_000),
   },
 
   /**
